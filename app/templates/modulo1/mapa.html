@@ -8,13 +8,8 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        #map {
-            height: 100vh;
-            width: 100%;
-        }
-        .leaflet-control {
-            border-radius: 8px;
-        }
+        #map { height: 100vh; width: 100%; }
+        .leaflet-control { border-radius: 8px; }
     </style>
 </head>
 <body class="h-screen">
@@ -24,21 +19,21 @@
     <!-- Panel de Control -->
     <div class="absolute top-4 left-4 z-[1000] bg-white rounded-lg shadow-lg p-4 w-80">
         <h3 class="font-bold text-lg mb-3 text-gray-800">Capas del Mapa</h3>
-        
+
         <!-- Capas conmutables -->
         <div class="space-y-3">
             <label class="flex items-center space-x-2 cursor-pointer">
                 <input type="checkbox" id="zonasRiesgo" checked class="rounded">
                 <span class="text-sm">Zonas de Riesgo</span>
             </label>
-            
+
             <label class="flex items-center space-x-2 cursor-pointer">
                 <input type="checkbox" id="estacionesFluviales" checked class="rounded">
                 <span class="text-sm">Estaciones Fluviales</span>
             </label>
-            
+
             <label class="flex items-center space-x-2 cursor-pointer">
-                <input type="checkbox" id="incidentes" class="rounded">
+                <input type="checkbox" id="incidentes" checked class="rounded">
                 <span class="text-sm">Incidentes Históricos</span>
             </label>
         </div>
@@ -59,80 +54,169 @@
                     <div class="w-4 h-4 bg-blue-500 rounded-full"></div>
                     <span>Estación Fluvial</span>
                 </div>
+                <div class="flex items-center space-x-2">
+                    <div class="w-4 h-4 bg-purple-500 rounded-full"></div>
+                    <span>Incidente Reportado</span>
+                </div>
             </div>
         </div>
 
         <!-- Botón de exportación (bloqueado en público) -->
-        <button disabled 
+        <button disabled
                 class="mt-4 w-full bg-gray-300 text-gray-500 px-3 py-2 rounded text-sm cursor-not-allowed">
             🔒 Exportar Datos (Solo Funcionarios)
         </button>
     </div>
 
     <script>
-        // Inicializar mapa
+        // ============================================================
+        //  Mapa base
+        // ============================================================
         const map = L.map('map').setView([-38.7, -72.5], 12);
 
-        // Capa de mapa base
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        // Cargar datos del mapa
+        // ============================================================
+        //  Grupos de capas (permiten toggle limpio)
+        // ============================================================
+        const capaZonas      = L.layerGroup().addTo(map);
+        const capaEstaciones = L.layerGroup().addTo(map);
+        const capaIncidentes = L.layerGroup().addTo(map);   // por defecto visible
+
+        // ============================================================
+        //  Datos Módulo 1: zonas + estaciones
+        // ============================================================
         async function cargarDatosMapa() {
             try {
                 const response = await fetch('/api/modulo1/datos-mapa');
+                if (!response.ok) throw new Error('Error de red');
                 const data = await response.json();
-                
-                renderizarZonasRiesgo(data.zonas_riesgo);
-                renderizarEstacionesFluviales(data.estaciones_fluviales);
+
+                renderizarZonasRiesgo(data.zonas_riesgo || []);
+                renderizarEstacionesFluviales(data.estaciones_fluviales || []);
             } catch (error) {
                 console.error('Error cargando datos del mapa:', error);
             }
         }
 
-        // Renderizar zonas de riesgo
         function renderizarZonasRiesgo(zonas) {
             zonas.forEach(zona => {
                 const color = zona.nivel_riesgo === 'alto' ? '#ef4444' : '#f97316';
-                
+
                 L.polygon(zona.coordenadas, {
                     color: color,
                     weight: 2,
                     fillOpacity: 0.3
-                }).addTo(map).bindPopup(`
+                })
+                .bindPopup(`
                     <b>${zona.nombre}</b><br>
                     Tipo: ${zona.tipo_riesgo}<br>
                     Nivel: ${zona.nivel_riesgo}
-                `);
+                `)
+                .addTo(capaZonas);
             });
         }
 
-        // Renderizar estaciones fluviales
         function renderizarEstacionesFluviales(estaciones) {
             estaciones.forEach(est => {
                 L.marker([est.latitud, est.longitud])
-                    .addTo(map)
                     .bindPopup(`
                         <b>${est.nombre}</b><br>
                         Altura actual: ${est.altura_actual}m
-                    `);
+                    `)
+                    .addTo(capaEstaciones);
             });
         }
 
-        // Configurar controles de capas
-        document.getElementById('zonasRiesgo').addEventListener('change', function() {
-            // Lógica para mostrar/ocultar capas
-            console.log('Toggle zonas de riesgo:', this.checked);
+        // ============================================================
+        //  Datos Módulo 2: incidentes reportados
+        // ============================================================
+        async function cargarIncidentes() {
+            try {
+                const response = await fetch('/api/modulo1/incidentes-publicos');
+                if (!response.ok) throw new Error('Error de red');
+                const geojson = await response.json();
+                renderizarIncidentes(geojson);
+            } catch (error) {
+                console.error('Error cargando incidentes:', error);
+            }
+        }
+
+        function renderizarIncidentes(geojson) {
+            if (!geojson || !geojson.features) return;
+
+            L.geoJSON(geojson, {
+                // Los puntos se dibujan como círculos púrpuras
+                pointToLayer: (feature, latlng) =>
+                    L.circleMarker(latlng, {
+                        radius: 8,
+                        color: '#7c3aed',
+                        weight: 2,
+                        fillColor: '#a78bfa',
+                        fillOpacity: 0.85,
+                    }),
+
+                // Estilo común a líneas y polígonos
+                style: {
+                    color: '#7c3aed',
+                    weight: 3,
+                    fillColor: '#a78bfa',
+                    fillOpacity: 0.3,
+                },
+
+                // Popup con la info que se capturó en el Módulo 2
+                onEachFeature: (feature, layer) => {
+                    const p = feature.properties || {};
+                    const fecha = p.fecha_creacion
+                        ? new Date(p.fecha_creacion).toLocaleString('es-CL')
+                        : 'Fecha desconocida';
+
+                    layer.bindPopup(`
+                        <div style="min-width:200px">
+                            <b style="color:#7c3aed;font-size:14px">${p.amenaza_tipo}</b><br>
+                            <div style="margin-top:4px;font-size:13px;color:#374151">
+                                ${p.comentario || '<i>Sin comentario</i>'}
+                            </div>
+                            <div style="margin-top:6px;font-size:11px;color:#9ca3af">
+                                Reportado el ${fecha}
+                            </div>
+                        </div>
+                    `);
+                },
+            }).addTo(capaIncidentes);
+        }
+
+        // ============================================================
+        //  Toggles de capas
+        // ============================================================
+        function toggleCapa(capa, visible) {
+            if (visible) {
+                if (!map.hasLayer(capa)) map.addLayer(capa);
+            } else {
+                if (map.hasLayer(capa)) map.removeLayer(capa);
+            }
+        }
+
+        document.getElementById('zonasRiesgo').addEventListener('change', function () {
+            toggleCapa(capaZonas, this.checked);
         });
 
-        document.getElementById('estacionesFluviales').addEventListener('change', function() {
-            console.log('Toggle estaciones:', this.checked);
+        document.getElementById('estacionesFluviales').addEventListener('change', function () {
+            toggleCapa(capaEstaciones, this.checked);
         });
 
-        // Inicializar
+        document.getElementById('incidentes').addEventListener('change', function () {
+            toggleCapa(capaIncidentes, this.checked);
+        });
+
+        // ============================================================
+        //  Init
+        // ============================================================
         document.addEventListener('DOMContentLoaded', () => {
             cargarDatosMapa();
+            cargarIncidentes();
         });
     </script>
 </body>

@@ -27,11 +27,10 @@
       </button>
     </form>
 
-    <!-- Resultado final: sesión iniciada -->
-    <div id="sesion-ok" class="hidden rounded-lg bg-emerald-50 border border-emerald-200 p-4">
-      <p class="font-semibold text-emerald-800">Sesión iniciada</p>
-      <p id="sesion-detalle" class="text-sm text-emerald-700 mt-1"></p>
-      <p class="text-xs text-slate-500 mt-3">El panel de gestión se habilitará en los siguientes módulos.</p>
+    <!-- Pantalla de transición mientras se redirige (opcional pero útil) -->
+    <div id="redirigiendo" class="hidden rounded-lg bg-emerald-50 border border-emerald-200 p-4">
+      <p class="font-semibold text-emerald-800">Acceso concedido</p>
+      <p class="text-sm text-emerald-700 mt-1">Redirigiendo al panel de gestión…</p>
     </div>
   </div>
 </main>
@@ -106,6 +105,9 @@
   // Convierte el "detail" de FastAPI (string o lista de validación) en texto legible
   function textoError(data, fallback) {
     if (typeof data.detail === "string") return data.detail;
+    if (Array.isArray(data.detail) && data.detail.length) {
+      return data.detail.map((d) => d.msg || JSON.stringify(d)).join(" ");
+    }
     return fallback;
   }
 
@@ -124,12 +126,15 @@
     return { ok: resp.ok, status: resp.status, data };
   }
 
-  function mostrarSesionIniciada(usuario) {
+  // Muestra el estado de transición y navega al destino devuelto por el backend.
+  function redirigir(destino) {
     $("form-login").classList.add("hidden");
     $("modal-clave").classList.add("hidden");
-    $("sesion-detalle").textContent =
-      `Usuario: ${usuario.username} · Rol: ${usuario.rol} · Permisos: ${usuario.permisos.length}`;
-    $("sesion-ok").classList.remove("hidden");
+    $("redirigiendo").classList.remove("hidden");
+    // Pequeño delay para que el usuario vea el mensaje antes del salto.
+    window.setTimeout(() => {
+      window.location.href = destino;
+    }, 150);
   }
 
   // ---------- Paso 1: login ----------
@@ -153,12 +158,20 @@
         return;
       }
 
+      // Primer ingreso: el backend pide resolver la clave temporal.
       if (r.data.estado === "cambio_clave_requerido") {
         $("modal-clave").classList.remove("hidden");
         return;
       }
 
-      mostrarSesionIniciada(r.data.usuario);
+      // Sesión completa: navegar al destino (Módulo 2, dashboard o landing).
+      if (r.data.estado === "ok" && r.data.redirect) {
+        redirigir(r.data.redirect);
+        return;
+      }
+
+      // Fallback defensivo (no debería ocurrir con el backend actual).
+      redirigir("/dashboard");
     } catch (err) {
       mostrarError("error-login", "Error de conexión con el servidor.");
     } finally {
@@ -214,7 +227,15 @@
 
       $("nueva_clave").value = "";
       $("confirmar_clave").value = "";
-      mostrarSesionIniciada(r.data.usuario);
+
+      // ✅ Aquí estaba el bug: antes se llamaba a mostrarSesionIniciada().
+      // Ahora navegamos al destino real según los permisos del rol.
+      if (r.data.estado === "ok" && r.data.redirect) {
+        redirigir(r.data.redirect);
+        return;
+      }
+
+      redirigir("/dashboard");
     } catch (err) {
       mostrarError("error-clave", "Error de conexión con el servidor.");
     } finally {

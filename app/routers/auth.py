@@ -1,6 +1,7 @@
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -69,6 +70,12 @@ def _resumen_usuario(usuario: Usuario) -> dict:
     }
 
 
+def _destino_segun_permisos(usuario: Usuario) -> str:
+    """Todos los usuarios autenticados aterrizan en /dashboard.
+    El sidebar filtra módulos por permiso y licencia desde ahí."""
+    return "/dashboard"
+
+
 # ---------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------
@@ -79,17 +86,22 @@ def obtener_csrf(request: Request) -> dict:
 
 
 @router.post("/login", dependencies=[Depends(csrf_obligatorio)])
-def login(datos: LoginIn, request: Request, db: Session = Depends(get_db)) -> dict:
-    usuario = db.scalar(select(Usuario).where(Usuario.username == datos.username.strip()))
+def login(
+    credentials: LoginIn,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
+    usuario = db.scalar(select(Usuario).where(Usuario.username == credentials.username.strip()))
     if usuario is None or not usuario.activo or not verify_password(
-        datos.password, usuario.password_hash
+        credentials.password, usuario.password_hash
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Usuario o contraseña incorrectos.",
         )
 
-    # Primer ingreso con clave temporal: el usuario debe decidir antes de tener sesión completa
+    # Primer ingreso con clave temporal: el usuario debe decidir antes de tener
+    # sesión completa. El frontend debe llevarlo a la vista de resolución de clave.
     if usuario.requiere_cambio_clave:
         token = _establecer_sesion(request, pendiente_id=usuario.id)
         return {
@@ -97,12 +109,22 @@ def login(datos: LoginIn, request: Request, db: Session = Depends(get_db)) -> di
             "mensaje": "Debes cambiar tu contraseña o mantener la clave actual.",
             "opciones": ["cambiar", "mantener"],
             "csrf_token": token,
+            "redirect": "/auth/clave/resolver",
         }
 
     token = _establecer_sesion(request, usuario_id=usuario.id)
     registrar_auditoria(db, request, usuario.id, "Inició sesión", "usuarios", usuario.id)
     db.commit()
-    return {"estado": "ok", "usuario": _resumen_usuario(usuario), "csrf_token": token}
+
+    # Redirección según permisos del rol. Como este endpoint es JSON (consumido
+    # por fetch), no se devuelve un RedirectResponse: el cliente navega con
+    # window.location.href = data.redirect.
+    return {
+        "estado": "ok",
+        "usuario": _resumen_usuario(usuario),
+        "csrf_token": token,
+        "redirect": _destino_segun_permisos(usuario),
+    }
 
 
 @router.post("/clave/resolver", dependencies=[Depends(csrf_obligatorio)])
@@ -134,12 +156,12 @@ def resolver_clave(
 
         errores = validar_fortaleza_clave(nueva)
         if errores:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, " ".join(errores))
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, " ".join(errores))
 
         if verify_password(nueva, usuario.password_hash):
             raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                "La nueva clave no puede ser igual a la temporal.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La nueva clave no puede ser igual a la temporal.",
             )
 
         usuario.password_hash = hash_password(nueva)
@@ -151,7 +173,14 @@ def resolver_clave(
     token = _establecer_sesion(request, usuario_id=usuario.id)
     registrar_auditoria(db, request, usuario.id, accion_txt, "usuarios", usuario.id)
     db.commit()
-    return {"estado": "ok", "usuario": _resumen_usuario(usuario), "csrf_token": token}
+
+    # Aquí se completa la sesión: acá debe ir la redirección por permisos
+    return {
+        "estado": "ok",
+        "usuario": _resumen_usuario(usuario),
+        "csrf_token": token,
+        "redirect": _destino_segun_permisos(usuario),
+    }
 
 
 @router.post("/logout", dependencies=[Depends(csrf_obligatorio)])
@@ -176,10 +205,13 @@ def reset_clave(
     """Genera una clave temporal legible para un funcionario. Se muestra UNA sola vez."""
     objetivo = db.get(Usuario, usuario_id)
     if objetivo is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Usuario no encontrado.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado.")
 
     if objetivo.rol.nombre == "superadmin" and actor.rol.nombre != "superadmin":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "No puedes reiniciar la clave del superadmin.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No puedes reiniciar la clave del superadmin.",
+        )
 
     clave = generar_clave_temporal(datos.comuna)
     objetivo.password_hash = hash_password(clave)

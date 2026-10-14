@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Table
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Table, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -53,12 +53,30 @@ class Usuario(Base):
     role_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("roles.id", ondelete="RESTRICT"), nullable=False
     )
-    # True cuando el admin reinicia la clave: obliga a elegir una nueva o mantener la temporal
     requiere_cambio_clave: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     activo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     creado_en: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     rol: Mapped[Rol] = relationship(back_populates="usuarios", lazy="joined")
+
+
+class Incidente(Base):
+    """Incidentes registrados en terreno (Módulo 2 – tabla incidentes_reportes)."""
+
+    __tablename__ = "incidentes_reportes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    amenaza_tipo: Mapped[str] = mapped_column(String(100), nullable=False)
+    comentario: Mapped[str | None] = mapped_column(String(1000))
+    geojson_geometria: Mapped[str] = mapped_column(Text, nullable=False)
+    imagenes: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    eliminado: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    creado_por_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=False
+    )
+    fecha_creacion: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    creado_por: Mapped["Usuario"] = relationship()
 
 
 class ModuloLicencia(Base):
@@ -90,16 +108,17 @@ class LogAuditoria(Base):
     )
 
     usuario: Mapped[Usuario | None] = relationship(lazy="joined")
-    
+
+
 class AlertaMunicipalActiva(Base):
     """Alertas tempranas o climáticas registradas manualmente por operadores municipales."""
 
     __tablename__ = "alertas_municipales_activas"
 
-    id: Mapped[int] = mapped_keyword if hasattr(locals(), 'mapped_keyword') else mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)  # línea corrupta limpiada
     comuna: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
-    tipo_alerta: Mapped[str] = mapped_column(String(100), nullable=False)      # Ej: 'Tormenta Eléctrica', 'Vientos Intensos'
-    intensidad: Mapped[str] = mapped_column(String(50), nullable=False)         # Ej: 'Amarilla', 'Alta', 'Crítica'
-    periodo_estimado: Mapped[str] = mapped_column(String(255), nullable=False)  # Ej: 'Estimado entre las 15:00 y 21:00 hrs'
+    tipo_alerta: Mapped[str] = mapped_column(String(100), nullable=False)
+    intensidad: Mapped[str] = mapped_column(String(50), nullable=False)
+    periodo_estimado: Mapped[str] = mapped_column(String(255), nullable=False)
     activa: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     creado_en: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)

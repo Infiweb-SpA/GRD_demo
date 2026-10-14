@@ -1,11 +1,16 @@
-from fastapi import APIRouter, Request, HTTPException, Query
+from fastapi import APIRouter, Request, HTTPException, Query, Depends
 from fastapi.responses import HTMLResponse
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from typing import Dict, Any, Optional
+from sqlalchemy.orm import Session
 import httpx
 import asyncio
+import json
 from datetime import datetime
+
+from app.database import get_db
+from app.models import Incidente
 
 router = APIRouter()
 
@@ -159,3 +164,45 @@ async def obtener_comparativa_comunas() -> Dict[str, Any]:
             except Exception:
                 comparativa[comuna] = 0.0
     return {"comparativa_agua_24h": comparativa}
+
+
+# ============================================================
+#  NUEVO: Incidentes reportados por funcionarios → visor público
+# ============================================================
+@router.get("/api/modulo1/incidentes-publicos")
+async def incidentes_publicos(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Devuelve los incidentes del Módulo 2 en formato GeoJSON puro.
+
+    Este endpoint es PÚBLICO (sin autenticación) porque alimenta el visor
+    ciudadano. Por eso sólo expone información no sensible: tipo de amenaza,
+    comentario y fecha de creación. NO expone autor, IP ni identificadores
+    internos de usuario.
+    """
+    incidentes = db.query(Incidente).all()
+    features: list[Dict[str, Any]] = []
+
+    for inc in incidentes:
+        try:
+            geometria = json.loads(inc.geojson_geometria)
+        except (TypeError, ValueError):
+            # Registro con geometría corrupta → se omite en lugar de romper todo el visor
+            continue
+
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": geometria,
+                "properties": {
+                    "id": inc.id,
+                    "amenaza_tipo": inc.amenaza_tipo,
+                    "comentario": inc.comentario or "",
+                    "fecha_creacion": (
+                        inc.fecha_creacion.isoformat()
+                        if inc.fecha_creacion
+                        else None
+                    ),
+                },
+            }
+        )
+
+    return {"type": "FeatureCollection", "features": features}

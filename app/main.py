@@ -9,7 +9,7 @@ from app.config import settings
 from app.database import SessionLocal, init_db
 from app.routers import auth
 from app.seed import seed_inicial
-from app.routers import auth, vistas,modulo1
+from app.routers import auth, vistas,modulo1,modulo2
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -46,6 +46,7 @@ app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 app.include_router(auth.router)
 app.include_router(vistas.router)
 app.include_router(modulo1.router)
+app.include_router(modulo2.router)
 
 @app.get("/api/salud", tags=["sistema"])
 def salud() -> dict:

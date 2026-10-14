@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro de Incidentes - GRD Comunal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        .leaflet-container { height: 100%; width: 100%; }
+        #mapaEdicion { height: 600px; width: 100%; border-radius: 0.5rem; cursor: crosshair; }
+        .btn-dibujo.activo { outline: 3px solid #fbbf24; outline-offset: 2px; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans antialiased">
+
+    <!-- ============================================================
+         HEADER
+    ============================================================ -->
+    <header class="bg-blue-800 text-white shadow-lg">
+        <div class="container mx-auto px-4 py-6 flex justify-between items-center flex-wrap gap-3">
+            <div>
+                <h1 class="text-3xl font-bold">Registro de Incidentes</h1>
+                <p class="text-blue-200">Módulo 2 - Histórico y Trazabilidad</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <div class="text-right">
+                    <p class="text-sm text-blue-200">Sesión activa:</p>
+                    <p class="font-semibold">{{ usuario.username }} ({{ usuario.rol.nombre }})</p>
+                </div>
+                <a href="/dashboard"
+                   class="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+                    ← Panel
+                </a>
+                <button id="btnLogout"
+                        class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+                    Cerrar sesión
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ============================================================
+         MAIN
+    ============================================================ -->
+    <main class="container mx-auto px-4 py-8">
+
+        <!-- Grid: Mapa + Formulario -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+
+            <!-- Mapa de edición vectorial -->
+            <div class="lg:col-span-2 bg-white rounded-lg shadow-md p-6">
+                <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+                    <h2 class="text-xl font-bold">Mapa de Edición Vectorial</h2>
+                    <div class="flex space-x-2">
+                        <button id="dibujarPunto"    class="btn-dibujo bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition">Punto</button>
+                        <button id="dibujarLinea"    class="btn-dibujo bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700 transition">Línea</button>
+                        <button id="dibujarPoligono" class="btn-dibujo bg-red-600 text-white px-3 py-2 rounded text-sm hover:bg-red-700 transition">Polígono</button>
+                        <button id="cancelarDibujo"  class="bg-gray-600 text-white px-3 py-2 rounded text-sm hover:bg-gray-700 transition">Cancelar</button>
+                    </div>
+                </div>
+                <div id="modoIndicador"
+                     class="hidden mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 font-medium"></div>
+                <div id="mapaEdicion" class="w-full rounded-lg border border-gray-300"></div>
+                <p class="text-xs text-gray-500 mt-2">
+                    <b>1.</b> Elige Punto / Línea / Polígono. &nbsp;
+                    <b>2.</b> Clic derecho para empezar. &nbsp;
+                    <b>3.</b> Clic izquierdo para añadir vértices. &nbsp;
+                    <b>4.</b> Clic derecho para cerrar. &nbsp;<b>Esc</b> cancela.
+                </p>
+            </div>
+
+            <!-- Formulario de creación -->
+            <div class="bg-white rounded-lg shadow-md p-6 h-fit">
+                <h2 class="text-xl font-bold mb-4 border-b pb-2">Registrar Nuevo Incidente</h2>
+                <form id="formIncidente" class="space-y-4">
+
+                    <div>
+                        <label for="amenaza_tipo" class="block text-sm font-medium text-gray-700 mb-1">Tipo de Amenaza *</label>
+                        <select name="amenaza_tipo" id="amenaza_tipo" required
+                                class="w-full rounded-md border border-gray-300 shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">Seleccionar...</option>
+                            {% for categoria in categorias %}
+                            <option value="{{ categoria }}">{{ categoria }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="comentario" class="block text-sm font-medium text-gray-700 mb-1">Comentario / Descripción</label>
+                        <textarea name="comentario" id="comentario" rows="3"
+                                  class="w-full rounded-md border border-gray-300 shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"
+                                  placeholder="Detalles del incidente, daños observados, etc."></textarea>
+                    </div>
+
+                    <div>
+                        <label for="geojson_geometria" class="block text-sm font-medium text-gray-700 mb-1">Geometría (GeoJSON)</label>
+                        <textarea name="geojson_geometria" id="geojson_geometria" rows="4" readonly
+                                  class="w-full rounded-md border border-gray-300 shadow-sm p-2 font-mono text-xs bg-gray-50"
+                                  placeholder='{"type":"Point","coordinates":[-72.51,-38.71]}'></textarea>
+                        <p class="text-xs text-red-500 mt-1" id="geoError"></p>
+                    </div>
+
+                    <div>
+                        <label for="crear-archivos" class="block text-sm font-medium text-gray-700 mb-1">
+                            Imágenes (opcional · JPG/PNG/WebP, máx 5 MB c/u)
+                        </label>
+                        <input type="file" id="crear-archivos" multiple
+                               accept="image/jpeg,image/png,image/webp"
+                               class="w-full text-sm border border-gray-300 rounded-md p-2 bg-white">
+                        <p class="text-xs text-gray-500 mt-1">Se subirán después de guardar el incidente.</p>
+                    </div>
+
+                    <div class="flex space-x-3 pt-4">
+                        <button type="submit"
+                                class="flex-1 bg-blue-600 text-white py-2 rounded-md font-semibold hover:bg-blue-700 transition shadow-sm">
+                            Guardar Incidente
+                        </button>
+                        <button type="button" id="exportarBtn"
+                                class="bg-green-600 text-white px-4 py-2 rounded-md font-semibold hover:bg-green-700 transition shadow-sm">
+                            Exportar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Tabla de incidentes registrados -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Incidentes Registrados</h2>
+                <span class="text-xs text-slate-500 italic">Clic en una fila para ver el detalle</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tipo</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Comentario</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Imgs</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaIncidentes" class="bg-white divide-y divide-gray-200">
+                        <tr><td colspan="6" class="px-4 py-4 text-center text-gray-500">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Logs de auditoría -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-bold mb-4">Logs de Auditoría (Normativa CGR)</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha / Hora</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usuario</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acción</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">IP</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logsContainer" class="bg-white divide-y divide-gray-200">
+                        <tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">Cargando logs...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- ============================================================
+         MODAL: Editar incidente
+    ============================================================ -->
+    <div id="modalEditar" class="hidden fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[2000]">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <h2 class="text-xl font-bold text-slate-800 mb-4">Editar Incidente</h2>
+            <form id="formEditar" class="space-y-4">
+                <input type="hidden" id="edit-id">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de Amenaza</label>
+                    <select id="edit-amenaza_tipo" required
+                            class="w-full rounded-md border border-gray-300 p-2">
+                        {% for c in categorias %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Comentario</label>
+                    <textarea id="edit-comentario" rows="3"
+                              class="w-full rounded-md border border-gray-300 p-2"></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Imágenes actuales</label>
+                    <div id="edit-imagenes-actuales" class="flex flex-wrap gap-2"></div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        Añadir imágenes (JPG/PNG/WebP, máx 5 MB c/u)
+                    </label>
+                    <input type="file" id="edit-archivos" multiple
+                           accept="image/jpeg,image/png,image/webp"
+                           class="w-full text-sm">
+                </div>
+                <p id="edit-error" class="hidden text-sm text-red-600"></p>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" id="btnCancelarEdicion"
+                            class="px-4 py-2 rounded-lg border border-slate-300">Cancelar</button>
+                    <button type="submit"
+                            class="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold">
+                        Guardar cambios
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         MODAL: Detalle de incidente
+    ============================================================ -->
+    <div id="modalDetalle" class="hidden fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[2000]">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-800" id="det-tipo">—</h2>
+                    <p class="text-xs text-slate-500" id="det-meta">—</p>
+                </div>
+                <button id="btnCerrarDetalle"
+                        class="text-slate-500 hover:text-slate-800 text-2xl leading-none">×</button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <h3 class="text-xs font-semibold uppercase text-slate-500 mb-1">Comentario</h3>
+                    <p id="det-comentario" class="text-sm text-slate-700 whitespace-pre-line">—</p>
+                </div>
+                <div>
+                    <h3 class="text-xs font-semibold uppercase text-slate-500 mb-1">Geometría</h3>
+                    <pre id="det-geometria"
+                         class="text-xs bg-slate-50 border border-slate-200 rounded p-2 overflow-x-auto max-h-32"></pre>
+                </div>
+            </div>
+
+            <div>
+                <h3 class="text-xs font-semibold uppercase text-slate-500 mb-2">
+                    Imágenes <span id="det-img-count" class="text-slate-400">(0)</span>
+                </h3>
+                <div id="det-imagenes" class="grid grid-cols-3 md:grid-cols-4 gap-2"></div>
+                <p id="det-sin-imgs" class="hidden text-sm text-slate-400 italic">Sin imágenes adjuntas.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         LIGHTBOX para ver imagen en grande
+    ============================================================ -->
+    <div id="lightbox" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-[3000] p-4">
+        <img id="lightbox-img" src="" alt="" class="max-h-[90vh] max-w-[90vw] rounded shadow-lg">
+        <button id="lightbox-close"
+                class="absolute top-4 right-6 text-white text-4xl leading-none hover:text-slate-300">×</button>
+    </div>
+
+    <!-- ============================================================
+         SCRIPTS
+    ============================================================ -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+    // ============================================================
+    //  Helpers
+    // ============================================================
+    const $ = (id) => document.getElementById(id);
+
+    async function obtenerCsrf() {
+        const res = await fetch("/auth/csrf");
+        const data = await res.json();
+        return data.csrf_token || "";
+    }
+
+    // ============================================================
+    //  Mapa base + estado del dibujo
+    // ============================================================
+    const map = L.map('mapaEdicion').setView([-38.93, -72.23], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+    map.getContainer().addEventListener('contextmenu', (e) => e.preventDefault());
+
+    const ESTILOS = {
+        Marker:  { color: '#2563eb', fillColor: '#2563eb', fillOpacity: 0.8, weight: 2 },
+        Line:    { color: '#16a34a', weight: 4 },
+        Polygon: { color: '#dc2626', weight: 3, fillOpacity: 0.2 },
+    };
+
+    const modo = { tipo: null, estado: 'idle', puntos: [], capa: null, marca: null };
+    const botones = {
+        Punto:    $('dibujarPunto'),
+        Linea:    $('dibujarLinea'),
+        Poligono: $('dibujarPoligono'),
+    };
+    const botonesPorTipo = { Marker: botones.Punto, Line: botones.Linea, Polygon: botones.Poligono };
+
+    function pintarBotonActivo(tipo) {
+        Object.values(botonesPorTipo).forEach(b => b.classList.remove('activo'));
+        if (tipo) botonesPorTipo[tipo].classList.add('activo');
+    }
+
+    function actualizarIndicador(msg, tono = 'amber') {
+        const el = $('modoIndicador');
+        if (!msg) { el.classList.add('hidden'); el.textContent = ''; return; }
+        el.classList.remove('hidden', 'bg-amber-50', 'border-amber-200', 'text-amber-800',
+                            'bg-emerald-50', 'border-emerald-200', 'text-emerald-800');
+        if (tono === 'emerald') el.classList.add('bg-emerald-50', 'border-emerald-200', 'text-emerald-800');
+        else el.classList.add('bg-amber-50', 'border-amber-200', 'text-amber-800');
+        el.textContent = msg;
+    }
+
+    function armar(tipo) {
+        cancelar();
+        modo.tipo = tipo;
+        modo.estado = 'armed';
+        pintarBotonActivo(tipo);
+        actualizarIndicador(tipo === 'Marker'
+            ? 'Haz clic derecho sobre el mapa para colocar el punto.'
+            : 'Haz clic derecho sobre el mapa para iniciar el trazado.');
+    }
+
+    function cancelar() {
+        if (modo.capa)  { map.removeLayer(modo.capa);  modo.capa = null; }
+        if (modo.marca) { map.removeLayer(modo.marca); modo.marca = null; }
+        modo.tipo = null; modo.estado = 'idle'; modo.puntos = [];
+        pintarBotonActivo(null);
+        actualizarIndicador(null);
+    }
+
+    botones.Punto.addEventListener('click',    () => armar('Marker'));
+    botones.Linea.addEventListener('click',    () => armar('Line'));
+    botones.Poligono.addEventListener('click', () => armar('Polygon'));
+    $('cancelarDibujo').addEventListener('click', cancelar);
+
+    map.on('contextmenu', (e) => {
+        if (!modo.tipo) return;
+        if (modo.estado === 'armed') {
+            if (modo.tipo === 'Marker') { colocarPunto(e.latlng); return; }
+            iniciarTrazado(e.latlng);
+            return;
+        }
+        if (modo.estado === 'drawing') cerrarTrazado();
+    });
+
+    map.on('click', (e) => {
+        if (modo.estado !== 'drawing') return;
+        modo.puntos.push(e.latlng);
+        modo.capa.setLatLngs(modo.puntos);
+        actualizarIndicador(`${modo.puntos.length} vértice(s). Clic derecho para cerrar, Esc cancela.`);
+    });
+
+    map.on('mousemove', (e) => {
+        if (modo.estado !== 'drawing') return;
+        modo.capa.setLatLngs([...modo.puntos, e.latlng]);
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') cancelar();
+    });
+
+    function colocarPunto(latlng) {
+        L.circleMarker(latlng, { radius: 7, ...ESTILOS.Marker })
+            .bindPopup('<b>Punto marcado</b>').addTo(map);
+        guardarGeometriaEnFormulario({
+            type: 'Point',
+            coordinates: [+latlng.lng.toFixed(7), +latlng.lat.toFixed(7)],
+        });
+        actualizarIndicador('Punto colocado ✔ Ya puedes completar el formulario y guardar.', 'emerald');
+        modo.estado = 'armed';
+    }
+
+    function iniciarTrazado(latlng) {
+        const esPoligono = modo.tipo === 'Polygon';
+        const estilo = ESTILOS[modo.tipo];
+        modo.puntos = [latlng];
+        modo.estado = 'drawing';
+        modo.capa = (esPoligono
+            ? L.polygon([], { ...estilo, dashArray: '6,6', fillOpacity: 0.1 })
+            : L.polyline([], { ...estilo, dashArray: '6,6' })
+        ).addTo(map);
+        modo.marca = L.circleMarker(latlng, {
+            radius: 5, color: estilo.color, fillColor: estilo.color, fillOpacity: 1,
+        }).addTo(map);
+        actualizarIndicador(`1 vértice. Clic izquierdo para añadir · Clic derecho para ${esPoligono ? 'cerrar' : 'finalizar'} · Esc cancela.`);
+    }
+
+    function cerrarTrazado() {
+        const esPoligono = modo.tipo === 'Polygon';
+        const minimo = esPoligono ? 3 : 2;
+        if (modo.puntos.length < minimo) {
+            actualizarIndicador(`Necesitas al menos ${minimo} vértices para ${esPoligono ? 'un polígono' : 'una línea'}.`);
+            return;
+        }
+        if (modo.capa)  { map.removeLayer(modo.capa);  modo.capa = null; }
+        if (modo.marca) { map.removeLayer(modo.marca); modo.marca = null; }
+
+        const estilo = ESTILOS[modo.tipo];
+        const capaFinal = esPoligono
+            ? L.polygon(modo.puntos, estilo).addTo(map)
+            : L.polyline(modo.puntos, estilo).addTo(map);
+
+        const geojson = capaFinal.toGeoJSON().geometry;
+        const red = (c) => [+c[0].toFixed(7), +c[1].toFixed(7)];
+        if (geojson.type === 'Polygon') geojson.coordinates = geojson.coordinates.map(r => r.map(red));
+        else if (geojson.type === 'LineString') geojson.coordinates = geojson.coordinates.map(red);
+
+        guardarGeometriaEnFormulario(geojson);
+        actualizarIndicador(`Geometría guardada ✔ ${modo.puntos.length} vértices · Ya puedes completar el formulario.`, 'emerald');
+        modo.estado = 'finished';
+        modo.puntos = [];
+    }
+
+    function guardarGeometriaEnFormulario(geojson) {
+        $('geojson_geometria').value = JSON.stringify(geojson);
+        $('geoError').textContent = '';
+    }
+
+    // ============================================================
+    //  Cache de incidentes
+    // ============================================================
+    let cacheIncidentes = [];
+
+    // ============================================================
+    //  Cargar incidentes
+    // ============================================================
+    async function cargarIncidentes() {
+        try {
+            const r = await fetch('/api/modulo2/incidentes');
+            if (!r.ok) throw new Error('Error de red');
+            const data = await r.json();
+            cacheIncidentes = data.features;
+            pintarMapa(data.features);
+            pintarTabla(data.features);
+        } catch (e) {
+            console.error('Error cargando incidentes:', e);
+            $('tablaIncidentes').innerHTML =
+                '<tr><td colspan="6" class="px-4 py-4 text-center text-red-500">Error cargando incidentes.</td></tr>';
+        }
+    }
+
+    function pintarMapa(features) {
+        features.forEach(f => {
+            if (!f.geometry) return;
+            L.geoJSON(f, {
+                pointToLayer: (ft, latlng) =>
+                    L.circleMarker(latlng, {
+                        radius: 6, color: '#2563eb',
+                        fillColor: '#2563eb', fillOpacity: 0.7,
+                    }),
+                onEachFeature: (ft, layer) => {
+                    const p = ft.properties || {};
+                    const imgs = (p.imagenes || []).slice(0, 3).map(u =>
+                        `<img src="${u}" class="w-16 h-16 object-cover rounded" />`
+                    ).join('');
+                    layer.bindPopup(`
+                        <div style="min-width:180px">
+                            <b style="color:#2563eb">${p.amenaza_tipo}</b><br>
+                            <span>${p.comentario || 'Sin comentario'}</span><br>
+                            <small style="color:#9ca3af">ID: ${p.id}</small>
+                            ${imgs ? `<div style="display:flex;gap:4px;margin-top:6px">${imgs}</div>` : ''}
+                        </div>
+                    `);
+                },
+                style: { color: '#2563eb', weight: 2, fillOpacity: 0.1 }
+            }).addTo(map);
+        });
+    }
+
+    function pintarTabla(features) {
+        const tbody = $('tablaIncidentes');
+        if (!features.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-4 text-center text-gray-500">No hay incidentes registrados.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = features.map(f => {
+            const p = f.properties;
+            const fecha = p.fecha_creacion
+                ? new Date(p.fecha_creacion).toLocaleString('es-CL') : '—';
+            return `
+                <tr class="hover:bg-gray-50 cursor-pointer" data-row-id="${p.id}">
+                    <td class="px-4 py-3 text-sm text-gray-500">#${p.id}</td>
+                    <td class="px-4 py-3 text-sm font-medium text-gray-900">${p.amenaza_tipo}</td>
+                    <td class="px-4 py-3 text-sm text-gray-700 max-w-md truncate">${p.comentario || '—'}</td>
+                    <td class="px-4 py-3 text-sm text-gray-500">${fecha}</td>
+                    <td class="px-4 py-3 text-sm text-gray-500">${(p.imagenes || []).length}</td>
+                    <td class="px-4 py-3 text-right space-x-2">
+                        <button data-edit="${p.id}"
+                                class="text-blue-600 hover:text-blue-800 text-sm font-medium">Editar</button>
+                        <button data-del="${p.id}"
+                                class="text-red-600 hover:text-red-800 text-sm font-medium">Eliminar</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        // Listeners: editar / eliminar
+        tbody.querySelectorAll('[data-edit]').forEach(btn =>
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                abrirEdicion(parseInt(btn.dataset.edit, 10));
+            }));
+        tbody.querySelectorAll('[data-del]').forEach(btn =>
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                eliminarIncidente(parseInt(btn.dataset.del, 10));
+            }));
+
+        // Listener: clic en fila → detalle
+        tbody.querySelectorAll('tr[data-row-id]').forEach(tr => {
+            tr.addEventListener('click', () => {
+                abrirDetalle(parseInt(tr.dataset.rowId, 10));
+            });
+        });
+    }
+
+    // ============================================================
+    //  Modal de detalle
+    // ============================================================
+    function abrirDetalle(id) {
+        const f = cacheIncidentes.find(x => x.properties.id === id);
+        if (!f) return;
+        const p = f.properties || {};
+
+        $('det-tipo').textContent = p.amenaza_tipo || '—';
+        const fecha = p.fecha_creacion ? new Date(p.fecha_creacion).toLocaleString('es-CL') : '—';
+        $('det-meta').textContent = `Incidente #${p.id} · Reportado el ${fecha}`;
+        $('det-comentario').textContent = p.comentario || 'Sin comentario.';
+        $('det-geometria').textContent = f.geometry
+            ? JSON.stringify(f.geometry, null, 2)
+            : 'Sin geometría asociada.';
+
+        const imgs = p.imagenes || [];
+        $('det-img-count').textContent = `(${imgs.length})`;
+        const cont = $('det-imagenes');
+        cont.innerHTML = '';
+
+        if (!imgs.length) {
+            $('det-sin-imgs').classList.remove('hidden');
+        } else {
+            $('det-sin-imgs').classList.add('hidden');
+            imgs.forEach(url => {
+                const wrap = document.createElement('div');
+                wrap.className = 'relative group cursor-pointer';
+                wrap.innerHTML = `
+                    <img src="${url}" alt=""
+                         class="w-full h-24 object-cover rounded border border-slate-200
+                                group-hover:opacity-80 transition">
+                `;
+                wrap.addEventListener('click', () => abrirLightbox(url));
+                cont.appendChild(wrap);
+            });
+        }
+
+        $('modalDetalle').classList.remove('hidden');
+    }
+
+    function abrirLightbox(url) {
+        $('lightbox-img').src = url;
+        $('lightbox').classList.remove('hidden');
+    }
+
+    $('btnCerrarDetalle').addEventListener('click', () => $('modalDetalle').classList.add('hidden'));
+    $('lightbox-close').addEventListener('click', () => $('lightbox').classList.add('hidden'));
+    $('lightbox').addEventListener('click', (e) => {
+        if (e.target.id === 'lightbox') $('lightbox').classList.add('hidden');
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            $('lightbox').classList.add('hidden');
+            $('modalDetalle').classList.add('hidden');
+        }
+    });
+
+    // ============================================================
+    //  Modal de edición
+    // ============================================================
+    function abrirEdicion(id) {
+        const f = cacheIncidentes.find(x => x.properties.id === id);
+        if (!f) return;
+        $('edit-id').value = id;
+        $('edit-amenaza_tipo').value = f.properties.amenaza_tipo || '';
+        $('edit-comentario').value = f.properties.comentario || '';
+        const cont = $('edit-imagenes-actuales');
+        cont.innerHTML = (f.properties.imagenes || []).map(u =>
+            `<img src="${u}" class="w-16 h-16 object-cover rounded border" />`
+        ).join('') || '<span class="text-xs text-gray-400">Sin imágenes</span>';
+        $('edit-archivos').value = '';
+        $('edit-error').classList.add('hidden');
+        $('modalEditar').classList.remove('hidden');
+    }
+
+    $('btnCancelarEdicion').addEventListener('click', () => $('modalEditar').classList.add('hidden'));
+
+    $('formEditar').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = parseInt($('edit-id').value, 10);
+        const csrf = await obtenerCsrf();
+
+        const payload = {
+            amenaza_tipo: $('edit-amenaza_tipo').value,
+            comentario: $('edit-comentario').value,
+        };
+
+        try {
+            const r = await fetch(`/api/modulo2/incidentes/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                body: JSON.stringify(payload),
+            });
+            if (!r.ok) { const err = await r.json(); throw new Error(err.detail || 'Error al editar'); }
+
+            const archivos = $('edit-archivos').files;
+            if (archivos && archivos.length) {
+                const fdImg = new FormData();
+                for (const a of archivos) fdImg.append('archivos', a);
+                const r2 = await fetch(`/api/modulo2/incidentes/${id}/imagenes`, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-Token': csrf },
+                    body: fdImg,
+                });
+                if (!r2.ok) { const err = await r2.json(); throw new Error(err.detail || 'Error subiendo imágenes'); }
+            }
+
+            window.location.reload();
+        } catch (err) {
+            $('edit-error').textContent = err.message;
+            $('edit-error').classList.remove('hidden');
+        }
+    });
+
+    // ============================================================
+    //  Eliminar
+    // ============================================================
+    async function eliminarIncidente(id) {
+        if (!confirm(`¿Eliminar el incidente #${id}? Esta acción queda en auditoría.`)) return;
+        try {
+            const csrf = await obtenerCsrf();
+            const r = await fetch(`/api/modulo2/incidentes/${id}`, {
+                method: 'DELETE',
+                headers: { 'X-CSRF-Token': csrf },
+            });
+            if (!r.ok) { const err = await r.json(); alert('Error: ' + (err.detail || 'desconocido')); return; }
+            window.location.reload();
+        } catch (err) {
+            console.error(err);
+            alert('Error de conexión.');
+        }
+    }
+
+    // ============================================================
+    //  Crear nuevo
+    // ============================================================
+    $('formIncidente').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const geojsonStr = $('geojson_geometria').value;
+        if (!geojsonStr) { $('geoError').textContent = 'Debes dibujar una geometría primero.'; return; }
+
+        let geojson;
+        try { geojson = JSON.parse(geojsonStr); }
+        catch { $('geoError').textContent = 'La geometría generada es inválida.'; return; }
+
+        const fd = new FormData(e.target);
+        const data = {
+            amenaza_tipo: fd.get('amenaza_tipo'),
+            comentario: fd.get('comentario'),
+            geojson_geometria: geojson,
+        };
+
+        const btn = e.target.querySelector('button[type="submit"]');
+        btn.disabled = true; btn.textContent = 'Guardando...';
+        try {
+            const csrf = await obtenerCsrf();
+
+            // 1) Crear incidente
+            const r = await fetch('/api/modulo2/incidentes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                body: JSON.stringify(data),
+            });
+            if (!r.ok) { const err = await r.json(); throw new Error(err.detail || 'Error al crear'); }
+            const { incidente_id } = await r.json();
+
+            // 2) Subir imágenes
+            const archivos = $('crear-archivos').files;
+            if (archivos && archivos.length) {
+                btn.textContent = 'Subiendo imágenes...';
+                const fdImg = new FormData();
+                for (const a of archivos) fdImg.append('archivos', a);
+                const r2 = await fetch(`/api/modulo2/incidentes/${incidente_id}/imagenes`, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-Token': csrf },
+                    body: fdImg,
+                });
+                if (!r2.ok) {
+                    const err = await r2.json();
+                    alert('Incidente creado, pero fallaron las imágenes: ' + (err.detail || ''));
+                }
+            }
+
+            window.location.reload();
+        } catch (err) {
+            alert('Error: ' + err.message);
+        } finally {
+            btn.disabled = false; btn.textContent = 'Guardar Incidente';
+        }
+    });
+
+    // ============================================================
+    //  Exportar
+    // ============================================================
+    $('exportarBtn').addEventListener('click', async () => {
+        const r = await fetch('/api/modulo2/exportar-datos');
+        if (!r.ok) { alert('Error al exportar.'); return; }
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'incidentes_grd.geojson';
+        document.body.appendChild(a); a.click();
+        URL.revokeObjectURL(url); a.remove();
+    });
+
+    // ============================================================
+    //  Logs
+    // ============================================================
+    async function cargarLogs() {
+        try {
+            const r = await fetch('/api/modulo2/logs-auditoria');
+            if (!r.ok) throw new Error('Error de red');
+            const data = await r.json();
+            const cont = $('logsContainer');
+            if (!data.logs?.length) {
+                cont.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">Sin registros.</td></tr>';
+                return;
+            }
+            cont.innerHTML = data.logs.map(l => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 text-sm text-gray-900">${new Date(l.fecha_hora).toLocaleString('es-CL')}</td>
+                    <td class="px-6 py-4 text-sm text-gray-700">${l.usuario}</td>
+                    <td class="px-6 py-4 text-sm text-gray-900">${l.accion}</td>
+                    <td class="px-6 py-4 text-sm text-gray-500 font-mono">${l.ip}</td>
+                </tr>
+            `).join('');
+        } catch {
+            $('logsContainer').innerHTML =
+                '<tr><td colspan="4" class="px-6 py-4 text-center text-red-500">Error cargando logs.</td></tr>';
+        }
+    }
+
+    // ============================================================
+    //  Logout
+    // ============================================================
+    $('btnLogout').addEventListener('click', async () => {
+        if (!confirm('¿Cerrar sesión?')) return;
+        try {
+            const csrf = await obtenerCsrf();
+            await fetch('/auth/logout', { method: 'POST', headers: { 'X-CSRF-Token': csrf } });
+        } finally {
+            window.location.href = '/auth/login';
+        }
+    });
+
+    // ============================================================
+    //  Init
+    // ============================================================
+    document.addEventListener('DOMContentLoaded', () => {
+        cargarIncidentes();
+        cargarLogs();
+    });
+    </script>
+</body>
+</html>

@@ -44,7 +44,7 @@ def csrf_obligatorio(request: Request) -> None:
 # Autenticación
 # ---------------------------------------------------------------
 def usuario_actual(request: Request, db: Session = Depends(get_db)) -> Usuario:
-    """Exige una sesión completa (clave ya resuelta)."""
+    """Exige una sesión completa (clave ya resuelta). Para APIs: devuelve 401 JSON."""
     no_autenticado = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Debes iniciar sesión.",
@@ -54,10 +54,32 @@ def usuario_actual(request: Request, db: Session = Depends(get_db)) -> Usuario:
         raise no_autenticado
 
     usuario = db.get(Usuario, uid)
-    # Si el admin reinició la clave, la sesión anterior deja de ser válida
     if usuario is None or not usuario.activo or usuario.requiere_cambio_clave:
         request.session.clear()
         raise no_autenticado
+    return usuario
+
+
+def get_current_user_html(request: Request, db: Session = Depends(get_db)) -> Usuario:
+    """Dependencia para vistas HTML: misma regla que usuario_actual, pero redirige
+    al login con 303 en lugar de devolver 401 JSON.
+
+    NOTA: una dependencia no puede devolver un RedirectResponse (FastAPI lo inyectaría
+    como parámetro); por eso se lanza HTTPException con header Location, que el
+    navegador respeta al seguir la redirección."""
+    uid = request.session.get("user_id")
+    if uid is None:
+        raise HTTPException(
+            status_code=status.HTTP_303_SEE_OTHER,
+            headers={"Location": "/auth/login"},
+        )
+    usuario = db.get(Usuario, uid)
+    if usuario is None or not usuario.activo or usuario.requiere_cambio_clave:
+        request.session.clear()
+        raise HTTPException(
+            status_code=status.HTTP_303_SEE_OTHER,
+            headers={"Location": "/auth/login"},
+        )
     return usuario
 
 
