@@ -1,0 +1,8 @@
+# crear el entorno virtual
+python -m venv .venv
+
+# activar el entorno virtual
+.venv\Scripts\Activate.ps1
+
+# instalar requerimientos
+pip install -r requirements.txt
