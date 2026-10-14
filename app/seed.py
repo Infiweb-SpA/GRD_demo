@@ -122,6 +122,22 @@ def seed_inicial(db: Session) -> list[tuple[str, str]]:
                 )
                 creados.append((username, clave))
 
+    # 6. Alertas municipales operativas iniciales (Opcional para pruebas)
+    from app.models import AlertaMunicipalActiva # (Asegúrate de importarlo arriba si es necesario)
+    
+    alerta_prueba = db.scalar(
+        select(AlertaMunicipalActiva).where(AlertaMunicipalActiva.comuna == "Cunco", AlertaMunicipalActiva.activa == True)
+    )
+    if alerta_prueba is None:
+        db.add(
+            AlertaMunicipalActiva(
+                comuna="Cunco",
+                tipo_alerta="Tormenta Eléctrica",
+                intensidad="Amarilla",
+                periodo_estimado="Estimado entre las 15:00 y 21:00 hrs de hoy",
+                activa=True
+            )
+        )
     db.commit()
     return creados
 

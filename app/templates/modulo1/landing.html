@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema GRD Comunal - Panel Ciudadano</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans">
+
+    <!-- Encabezado Principal -->
+    <header class="bg-blue-800 text-white p-6 shadow-md">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight">Sistema GRD Comunal</h1>
+                <p class="text-blue-200 text-sm mt-1">Gestión del Riesgo de Desastres - Monitoreo Climático y Preventivo</p>
+            </div>
+            <!-- Selectores Territoriales y Temporales -->
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="bg-blue-900 p-2.5 rounded-lg flex items-center gap-2 border border-blue-700">
+                    <label for="selector-comuna" class="text-xs font-medium text-blue-100">Comuna:</label>
+                    <select id="selector-comuna" class="bg-white text-gray-900 text-xs rounded p-1 font-semibold focus:outline-none" onchange="actualizarPanel()">
+                        <option value="Cunco">Cunco</option>
+                        <option value="Freire">Freire</option>
+                        <option value="Padre Las Casas">Padre Las Casas</option>
+                    </select>
+                </div>
+                <div class="bg-blue-900 p-2.5 rounded-lg flex items-center gap-2 border border-blue-700">
+                    <label for="selector-anio" class="text-xs font-medium text-blue-100">Año Histórico:</label>
+                    <select id="selector-anio" class="bg-white text-gray-900 text-xs rounded p-1 font-semibold focus:outline-none" onchange="actualizarPanel()">
+                        <option value="2026" selected>2026 (Actual)</option>
+                        <option value="2025">2025</option>
+                        <option value="2024">2024</option>
+                        <option value="2023">2023</option>
+                        <option value="2022">2022</option>
+                        <option value="2021">2021</option>
+                        <option value="2020">2020</option>
+                        <option value="2019">2019</option>
+                        <option value="2018">2018</option>
+                        <option value="2017">2017</option>
+                        <option value="2016">2016</option>
+                        <option value="2015">2015</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto p-4 md:p-6 space-y-8">
+
+        <!-- Sección de Alertas Dinámicas (Tormentas Eléctricas y Vientos > 70 km/h) -->
+        <div id="contenedor-alertas-criticas" class="grid grid-cols-1 md:grid-cols-2 gap-4 hidden">
+            <!-- Alerta Tormenta Eléctrica -->
+            <div id="alerta-tormenta-box" class="p-4 rounded-xl border bg-yellow-50 border-l-8 border-l-yellow-500 shadow-sm hidden">
+                <div class="flex items-start gap-3">
+                    <span class="text-2xl">⚡</span>
+                    <div>
+                        <h3 class="font-bold text-yellow-900 text-base">Alerta de Tormenta Eléctrica Activa</h3>
+                        <p id="texto-periodo-tormenta" class="text-xs text-yellow-700 mt-1">Calculando período estimado...</p>
+                    </div>
+                </div>
+            </div>
+            <!-- Alerta Vientos Críticos > 70 km/h -->
+            <div id="alerta-viento-box" class="p-4 rounded-xl border bg-red-50 border-l-8 border-l-red-600 shadow-sm hidden">
+                <div class="flex items-start gap-3">
+                    <span class="text-2xl">💨</span>
+                    <div>
+                        <h3 class="font-bold text-red-900 text-base">Alerta Crítica: Ráfagas de Viento > 70 km/h</h3>
+                        <p id="texto-valor-viento" class="text-xs text-red-700 mt-1">Riesgo de caída de tendido eléctrico y árboles.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sección de Alertas Administrativas Base -->
+        <section>
+            <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                ⚠️ Bitácora de Alertas Climáticas Municipales
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {% for alerta in alertas %}
+                <div class="p-4 rounded-xl border bg-white shadow-sm {% if alerta.intensidad == 'Crítica' %}border-l-8 border-l-red-500{% elif alerta.intensidad == 'Alta' %}border-l-8 border-l-orange-500{% else %}border-l-8 border-l-yellow-500{% endif %}">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="font-bold text-gray-900 text-lg">{{ alerta.tipo }}</h3>
+                            <p class="text-sm text-gray-600 mt-1">Intensidad: <span class="font-semibold">{{ alerta.intensidad }}</span></p>
+                            <p class="text-sm text-gray-600">Comuna: {{ alerta.comuna }}</p>
+                        </div>
+                        <span class="text-xs text-gray-400 font-mono">{{ alerta.fecha }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Indicadores Clave en Tiempo Real -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <!-- Tarjeta 1: Temperatura Real -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col justify-between">
+                <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Temperatura Aire</h3>
+                <div class="mt-4">
+                    <span id="valor-temperatura" class="text-3xl font-extrabold text-gray-900">-- °C</span>
+                    <p id="subtexto-temperatura" class="text-xs text-gray-500 mt-1">Cargando...</p>
+                </div>
+            </div>
+
+            <!-- Tarjeta 2: Agua Caída Real -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col justify-between">
+                <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Agua Caída (24h)</h3>
+                <div class="mt-4">
+                    <span id="valor-agua" class="text-3xl font-extrabold text-blue-600">0.0 mm</span>
+                    <p id="subtexto-agua" class="text-xs text-gray-500 mt-1">Últimas 24 horas</p>
+                </div>
+            </div>
+
+            <!-- Tarjeta 3: Ráfagas de Viento -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col justify-between">
+                <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Ráfaga Máxima (24h)</h3>
+                <div class="mt-4">
+                    <span id="valor-viento" class="text-3xl font-extrabold text-orange-600">0.0 km/h</span>
+                    <p id="subtexto-viento" class="text-xs text-gray-500 mt-1">Monitoreo de velocidad</p>
+                </div>
+            </div>
+
+            <!-- Tarjeta 4: Mitigación -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col justify-between">
+                <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Efectividad Operativa</h3>
+                <div class="mt-4">
+                    <span id="valor-limpieza" class="text-3xl font-extrabold text-green-600">0%</span>
+                    <p id="subtexto-limpieza" class="text-xs text-gray-500 mt-1">Limpieza de infraestructura</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección de Gráficos Analíticos -->
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Gráfico Histórico de la Comuna (Dinámico por Año) -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <h3 id="titulo-grafico-historico" class="text-lg font-bold text-gray-800 mb-2">Acumulado Histórico de Lluvias</h3>
+                <p id="subtitulo-grafico-historico" class="text-xs text-gray-500 mb-4">Registro mensual extraído de Open-Meteo.</p>
+                <div class="relative h-64">
+                    <canvas id="graficoHistorico"></canvas>
+                </div>
+            </div>
+
+            <!-- Gráfico de Comparativa Territorial -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <h3 class="text-lg font-bold text-gray-800 mb-2">Comparativa de Precipitación Actual 24h</h3>
+                <p class="text-xs text-gray-500 mb-4">Monitoreo simultáneo cruzado inter-comunal.</p>
+                <div class="relative h-64">
+                    <canvas id="graficoComparativo"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Enlace al Visor -->
+        <div class="bg-gray-800 text-white p-6 rounded-xl flex flex-col sm:flex-row justify-between items-center gap-4 shadow-inner">
+            <div>
+                <h3 class="text-lg font-bold">Visor Cartográfico Público</h3>
+                <p class="text-sm text-gray-400">Acceda a las capas georreferenciadas de zonas de inundación y estaciones de nivel.</p>
+            </div>
+            <a href="/modulo1/mapa" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition shadow">
+                Ver Mapa Completo →
+            </a>
+        </div>
+    </main>
+
+    <!-- Lógica JavaScript -->
+    <script>
+        let chartHistorico = null;
+        let chartComparativo = null;
+
+        async function actualizarPanel() {
+            const comuna = document.getElementById("selector-comuna").value;
+            const anio = document.getElementById("selector-anio").value;
+
+            try {
+                const response = await fetch(`/api/modulo1/estadisticas?comuna=${comuna}&anio=${anio}`);
+                if (!response.ok) throw new Error("Error en respuesta del servidor.");
+                const data = await response.json();
+
+                // Actualizar tarjetas de indicadores
+                document.getElementById("valor-temperatura").innerText = `${data.temperatura_actual} °C`;
+                document.getElementById("subtexto-temperatura").innerText = `Medición instantánea en ${data.comuna}`;
+                
+                document.getElementById("valor-agua").innerText = `${data.agua_ultimas_24h} mm`;
+                document.getElementById("subtexto-agua").innerText = `Acumulado últimas 24h en ${data.comuna}`;
+                
+                document.getElementById("valor-viento").innerText = `${data.rafaga_max_24h} km/h`;
+                document.getElementById("subtexto-viento").innerText = `Ráfaga máxima 24h en ${data.comuna}`;
+
+                document.getElementById("valor-limpieza").innerText = `${data.efectividad_limpieza}%`;
+                document.getElementById("subtexto-limpieza").innerText = `Efectividad en ${data.comuna}`;
+
+                // Gestión de Alertas Dinámicas (Tormenta eléctrica y vientos > 70 km/h)
+                const contenedorAlertas = document.getElementById("contenedor-alertas-criticas");
+                const alertaTormentaBox = document.getElementById("alerta-tormenta-box");
+                const alertaVientoBox = document.getElementById("alerta-viento-box");
+                
+                let hayAlertaCritica = false;
+
+                if (data.alerta_tormenta_electrica) {
+                    alertaTormentaBox.classList.remove("hidden");
+                    document.getElementById("texto-periodo-tormenta").innerText = `Riesgo detectado en ${data.comuna}. ${data.periodo_tormenta}`;
+                    hayAlertaCritica = true;
+                } else {
+                    alertaTormentaBox.classList.add("hidden");
+                }
+
+                if (data.alerta_viento_critico) {
+                    alertaVientoBox.classList.remove("hidden");
+                    document.getElementById("texto-valor-viento").innerText = `Ráfaga peak registrada: ${data.rafaga_max_24h} km/h en ${data.comuna}. Precaución extrema.`;
+                    hayAlertaCritica = true;
+                } else {
+                    alertaVientoBox.classList.add("hidden");
+                }
+
+                if (hayAlertaCritica) {
+                    contenedorAlertas.classList.remove("hidden");
+                } else {
+                    contenedorAlertas.classList.add("hidden");
+                }
+
+                // Actualizar títulos del gráfico histórico
+                document.getElementById("titulo-grafico-historico").innerText = `Precipitaciones Mensuales en ${data.comuna} (Año ${data.anio})`;
+                document.getElementById("subtitulo-grafico-historico").innerText = `Registro oficial extraído de archivos Open-Meteo (${data.anio}).`;
+
+                // Renderizar o actualizar Gráfico Histórico
+                const meses = Object.keys(data.historico_precipitaciones_anual);
+                const mmLluvia = Object.values(data.historico_precipitaciones_anual);
+                const ctxH = document.getElementById('graficoHistorico').getContext('2d');
+
+                if (chartHistorico) {
+                    chartHistorico.data.labels = meses;
+                    chartHistorico.data.datasets[0].data = mmLluvia;
+                    chartHistorico.data.datasets[0].label = `Lluvia Mensual (mm) - ${data.comuna} (${data.anio})`;
+                    chartHistorico.update();
+                } else {
+                    chartHistorico = new Chart(ctxH, {
+                        type: 'bar',
+                        data: {
+                            labels: meses,
+                            datasets: [{
+                                label: `Lluvia Mensual (mm) - ${data.comuna} (${data.anio})`,
+                                data: mmLluvia,
+                                backgroundColor: 'rgba(59, 130, 246, 0.75)',
+                                borderColor: 'rgb(37, 99, 235)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: { y: { beginAtZero: true } }
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error("Error al actualizar los indicadores climáticos:", error);
+            }
+        }
+
+        async function inicializarGraficoComparativo() {
+            try {
+                const response = await fetch('/api/modulo1/comparativa-comunas');
+                if (!response.ok) throw new Error("Error en endpoint comparativo.");
+                const data = await response.json();
+                
+                const comunas = Object.keys(data.comparativa_agua_24h);
+                const valoresAgua = Object.values(data.comparativa_agua_24h);
+                const ctxC = document.getElementById('graficoComparativo').getContext('2d');
+
+                if (chartComparativo) {
+                    chartComparativo.data.labels = comunas;
+                    chartComparativo.data.datasets[0].data = valoresAgua;
+                    chartComparativo.update();
+                } else {
+                    chartComparativo = new Chart(ctxC, {
+                        type: 'bar',
+                        data: {
+                            labels: comunas,
+                            datasets: [{
+                                label: 'Precipitación Acumulada 24h (mm)',
+                                data: valoresAgua,
+                                backgroundColor: [
+                                    'rgba(59, 130, 246, 0.8)',  // Cunco
+                                    'rgba(245, 158, 11, 0.8)',  // Freire
+                                    'rgba(239, 68, 68, 0.8)'    // Padre Las Casas
+                                ],
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: { y: { beginAtZero: Date.now() } }
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error("Error al inicializar gráfica comparativa:", error);
+            }
+        }
+
+        // Carga inicial al cargar el DOM
+        document.addEventListener("DOMContentLoaded", () => {
+            actualizarPanel();
+            inicializarGraficoComparativo();
+        });
+    </script>
+</body>
+</html>

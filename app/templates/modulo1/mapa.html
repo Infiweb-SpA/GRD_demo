@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa Público - GRD Comunal</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+        .leaflet-control {
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body class="h-screen">
+    <!-- Mapa -->
+    <div id="map"></div>
+
+    <!-- Panel de Control -->
+    <div class="absolute top-4 left-4 z-[1000] bg-white rounded-lg shadow-lg p-4 w-80">
+        <h3 class="font-bold text-lg mb-3 text-gray-800">Capas del Mapa</h3>
+        
+        <!-- Capas conmutables -->
+        <div class="space-y-3">
+            <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" id="zonasRiesgo" checked class="rounded">
+                <span class="text-sm">Zonas de Riesgo</span>
+            </label>
+            
+            <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" id="estacionesFluviales" checked class="rounded">
+                <span class="text-sm">Estaciones Fluviales</span>
+            </label>
+            
+            <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" id="incidentes" class="rounded">
+                <span class="text-sm">Incidentes Históricos</span>
+            </label>
+        </div>
+
+        <!-- Leyenda -->
+        <div class="mt-4 pt-3 border-t border-gray-200">
+            <h4 class="font-semibold text-sm mb-2">Leyenda</h4>
+            <div class="space-y-1 text-xs">
+                <div class="flex items-center space-x-2">
+                    <div class="w-4 h-4 bg-red-500 rounded"></div>
+                    <span>Zona de Riesgo Alto</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <div class="w-4 h-4 bg-orange-500 rounded"></div>
+                    <span>Zona de Riesgo Moderado</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <div class="w-4 h-4 bg-blue-500 rounded-full"></div>
+                    <span>Estación Fluvial</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Botón de exportación (bloqueado en público) -->
+        <button disabled 
+                class="mt-4 w-full bg-gray-300 text-gray-500 px-3 py-2 rounded text-sm cursor-not-allowed">
+            🔒 Exportar Datos (Solo Funcionarios)
+        </button>
+    </div>
+
+    <script>
+        // Inicializar mapa
+        const map = L.map('map').setView([-38.7, -72.5], 12);
+
+        // Capa de mapa base
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Cargar datos del mapa
+        async function cargarDatosMapa() {
+            try {
+                const response = await fetch('/api/modulo1/datos-mapa');
+                const data = await response.json();
+                
+                renderizarZonasRiesgo(data.zonas_riesgo);
+                renderizarEstacionesFluviales(data.estaciones_fluviales);
+            } catch (error) {
+                console.error('Error cargando datos del mapa:', error);
+            }
+        }
+
+        // Renderizar zonas de riesgo
+        function renderizarZonasRiesgo(zonas) {
+            zonas.forEach(zona => {
+                const color = zona.nivel_riesgo === 'alto' ? '#ef4444' : '#f97316';
+                
+                L.polygon(zona.coordenadas, {
+                    color: color,
+                    weight: 2,
+                    fillOpacity: 0.3
+                }).addTo(map).bindPopup(`
+                    <b>${zona.nombre}</b><br>
+                    Tipo: ${zona.tipo_riesgo}<br>
+                    Nivel: ${zona.nivel_riesgo}
+                `);
+            });
+        }
+
+        // Renderizar estaciones fluviales
+        function renderizarEstacionesFluviales(estaciones) {
+            estaciones.forEach(est => {
+                L.marker([est.latitud, est.longitud])
+                    .addTo(map)
+                    .bindPopup(`
+                        <b>${est.nombre}</b><br>
+                        Altura actual: ${est.altura_actual}m
+                    `);
+            });
+        }
+
+        // Configurar controles de capas
+        document.getElementById('zonasRiesgo').addEventListener('change', function() {
+            // Lógica para mostrar/ocultar capas
+            console.log('Toggle zonas de riesgo:', this.checked);
+        });
+
+        document.getElementById('estacionesFluviales').addEventListener('change', function() {
+            console.log('Toggle estaciones:', this.checked);
+        });
+
+        // Inicializar
+        document.addEventListener('DOMContentLoaded', () => {
+            cargarDatosMapa();
+        });
+    </script>
+</body>
+</html>
