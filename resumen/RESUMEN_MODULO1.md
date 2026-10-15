@@ -124,6 +124,18 @@ Pendiente crear rol `cogrid` (Comité de Gestión del Riesgo de Desastres) con p
 
 Faltan endpoints para que administradores/COGRID creen, activen y desactiven alertas desde el panel.
 
+### 4. Estaciones Fluviales (decisión pendiente)
+
+El visor público tiene una capa de "Estaciones Fluviales" que hoy está
+oculta y sin datos. Se debe decidir entre:
+
+- **Opción A**: eliminar la capa del frontend (si no es prioridad municipal)
+- **Opción B**: crear tabla `estaciones_fluviales` en Módulo 1 con CRUD manual
+- **Opción C**: integrar con API SNIA/DGA para datos en tiempo real
+
+Recomendación: Opción B cuando llegue el Módulo 5 (Albergues y Logística),
+porque encaja en el mismo tipo de "catastro municipal de puntos críticos".
+
 ---
 
 ## 🎯 Decisiones de diseño

@@ -177,15 +177,21 @@ async def incidentes_publicos(db: Session = Depends(get_db)) -> Dict[str, Any]:
     ciudadano. Por eso sólo expone información no sensible: tipo de amenaza,
     comentario y fecha de creación. NO expone autor, IP ni identificadores
     internos de usuario.
+
+    Excluye los incidentes con soft delete (eliminado=True).
     """
-    incidentes = db.query(Incidente).all()
+    incidentes = (
+        db.query(Incidente)
+        .filter(Incidente.eliminado.is_(False))
+        .order_by(Incidente.fecha_creacion.desc())
+        .all()
+    )
     features: list[Dict[str, Any]] = []
 
     for inc in incidentes:
         try:
             geometria = json.loads(inc.geojson_geometria)
         except (TypeError, ValueError):
-            # Registro con geometría corrupta → se omite en lugar de romper todo el visor
             continue
 
         features.append(
@@ -206,3 +212,22 @@ async def incidentes_publicos(db: Session = Depends(get_db)) -> Dict[str, Any]:
         )
 
     return {"type": "FeatureCollection", "features": features}
+
+# ============================================================
+#  Datos del visor público: zonas de riesgo + estaciones fluviales
+# ============================================================
+@router.get("/api/modulo1/datos-mapa")
+async def datos_mapa() -> Dict[str, Any]:
+    """Datos geoespaciales base del visor público.
+
+    Por ahora devuelve listas vacías porque:
+    - Las zonas de riesgo oficiales las generará el Módulo 3 (pendiente).
+    - Las estaciones fluviales requieren integración con DGA/IDE Chile.
+
+    Cuando llegue el Módulo 3, este endpoint se conectará a las tablas
+    correspondientes sin cambiar el contrato del frontend.
+    """
+    return {
+        "zonas_riesgo": [],
+        "estaciones_fluviales": [],
+    }
