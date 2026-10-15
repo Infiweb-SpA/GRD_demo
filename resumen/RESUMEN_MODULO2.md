@@ -2,13 +2,25 @@
 
 ## 📌 Estado actual
 
-* **Completo y operativo** ✅
-* Versión: **v1.0.0**
-* Dependencias clave: FastAPI · SQLAlchemy · Jinja2 · Tailwind CSS (CDN) ·
-  Leaflet 1.9.4 (sin Geoman) · SQLite.
-* **Decisión de diseño relevante:** se reemplazó Leaflet-Geoman por **dibujo
-  manual con Leaflet puro** para soportar el flujo *clic-izq arma / clic-der
-  dibuja* solicitado. Geoman no ofrece ese patrón de forma nativa.
+- **Completo y operativo** ✅
+- Versión: **v1.0.1**
+- Dependencias clave: FastAPI · SQLAlchemy · Jinja2 · Tailwind CSS (CDN) · Leaflet 1.9.4 (sin Geoman) · SQLite
+- Entorno: `.venv` con FastAPI + Uvicorn
+- Python: 3.14 (compatible)
+- **Decisión de diseño relevante:** se reemplazó Leaflet-Geoman por **dibujo manual con Leaflet puro** para soportar el flujo *clic-izq arma / clic-der dibuja*. Geoman no ofrece ese patrón de forma nativa.
+
+---
+
+## 📂 Archivos que componen este módulo
+
+| Archivo / Carpeta | Rol dentro del módulo |
+| --- | --- |
+| `app/routers/modulo2.py` | API REST: CRUD de incidentes, subida de imágenes, exportación y logs |
+| `app/templates/modulo2/reportes.html` | Vista operativa: mapa + formulario + tabla + modales + lightbox |
+| `app/static/uploads/incidentes/{id}/` | Almacenamiento físico de imágenes con nombres UUID |
+| `app/models.py` (tabla `incidentes_reportes`) | Modelo ORM del incidente |
+| `app/models.py` (tabla `logs_auditoria`) | Fuente de auditoría compartida desde el Módulo 0 |
+| `app/deps.py` | Dependencias reutilizadas: `csrf_obligatorio`, `requiere_modulo`, `requiere_permiso`, `registrar_auditoria` |
 
 ---
 
@@ -16,10 +28,10 @@
 
 | Componente | Descripción |
 | --- | --- |
-| **Vista de Reportes (`/modulo2/reportes`)** | Panel operativo para funcionarios autenticados con permisos `reportes:leer` y `reportes:escribir`. Layout de 2 columnas: mapa vectorial + formulario de registro. |
+| **Vista de Reportes** (`/modulo2/reportes`) | Panel operativo para funcionarios con permisos `reportes:leer` y `reportes:escribir`. Layout de 2 columnas: mapa vectorial + formulario de registro. |
 | **Formulario estructurado SENAPRED** | Selector con catálogo oficial (Inundación, Deslizamiento, Incendio Forestal, Temporal, Terremoto, Erupción Volcánica, Ola de Calor, Sequía) + comentario libre. |
-| **Dibujo vectorial manual** | Flujo clic-izq arma → clic-der dibuja. Soporta **Punto**, **Línea** y **Polígono**. Clic-der cierra el trazado; **Esc** o botón Cancelar aborta. Feedback visual por banner + resaltado del botón activo + contador de vértices. |
-| **Serialización GeoJSON** | Salida `{"type":"Point|LineString|Polygon","coordinates":[...]}` con precisión WGS84 (7 decimales). Se vuelca al `<textarea>` readonly antes de guardar. |
+| **Dibujo vectorial manual** | Flujo clic-der arma → clic-izq añade vértices → clic-der cierra. Soporta **Punto**, **Línea** y **Polígono**. **Esc** o botón Cancelar aborta. Feedback visual por banner + resaltado del botón activo + contador de vértices. |
+| **Serialización GeoJSON** | Salida `{"type":"Point\|LineString\|Polygon","coordinates":[...]}` con precisión WGS84 (7 decimales). Se vuelca al `<textarea>` readonly antes de guardar. |
 | **Subida de imágenes** | Hasta N archivos JPG/PNG/WebP por incidente, máx 5 MB c/u. Se almacenan en `static/uploads/incidentes/{id}/` con nombres UUID. Se pueden añadir **al crear** y **al editar**. |
 | **Tabla de incidentes** | Listado con ID, tipo, comentario, fecha, número de imágenes y acciones (Editar / Eliminar). Clic en fila abre el modal de detalle. |
 | **Modal de detalle** | Muestra tipo de amenaza, fecha, comentario, geometría (JSON pretty-print) y galería de imágenes. Clic sobre una imagen → **lightbox** a pantalla completa. |
@@ -29,8 +41,8 @@
 | **Visor de logs** | Tabla con los últimos 100 eventos (fecha, usuario, acción, IP). |
 | **Exportación GeoJSON** | `GET /api/modulo2/exportar-datos` → archivo `incidentes_grd.geojson` con `Content-Disposition: attachment`. Excluye incidentes eliminados. |
 | **Integración con Módulo 1** | Endpoint público `GET /api/modulo1/incidentes-publicos` sirve los incidentes al visor ciudadano. Capa conmutable "Incidentes Históricos" con popups e imágenes. |
-| **Botón de cierre de sesión** | En el header. Llama a `POST /auth/logout` con CSRF y redirige a `/auth/login`. |
-| **Panel intermedio `/dashboard`** | Nuevo hub con sidebar de módulos filtrados por permiso y licencia. Todos los logins aterrizan aquí en vez de ir directo a `/modulo2/reportes`. |
+| **Botón de cierre de sesión** | En el header. Llama a `POST /auth/logout` con CSRF y redirige a `/modulo1/landing`. |
+| **Panel intermedio `/dashboard`** | Hub con sidebar de módulos filtrados por permiso y licencia. Todos los logins aterrizan aquí. |
 
 ---
 
@@ -47,13 +59,14 @@
 | `/api/modulo2/exportar-datos` | GET | 🔒 `modulo_2` + `exportar:datos` | Descarga `incidentes_grd.geojson`. |
 | `/api/modulo2/logs-auditoria` | GET | 🔒 `modulo_2` + `logs:ver` | Últimos 100 eventos de auditoría. |
 
-### Endpoints modificados en el Módulo 1
+### Endpoints de otros módulos que afectan al Módulo 2
 
 | Ruta | Método | Auth | Descripción |
 | --- | --- | --- | --- |
-| `/api/modulo1/incidentes-publicos` | GET | 🌐 Público | Sirve los incidentes vigentes al visor ciudadano. **No expone** autor, IP ni ids internos de usuario. |
-| `/auth/login` | GET | 🌐 Público | Ahora expulsa a usuarios ya logueados con `RedirectResponse 303`. |
-| `/dashboard` | GET | 🔒 Sesión activa | Nuevo hub con sidebar dinámico por permisos y licencia. |
+| `/api/modulo1/incidentes-publicos` | GET | 🌐 Público | Sirve los incidentes vigentes al visor ciudadano. **No expone** autor, IP ni IDs internos. |
+| `/auth/login` | GET | 🌐 Público | Expulsa a usuarios ya logueados con `RedirectResponse 303`. |
+| `/auth/logout` | POST | 🔒 CSRF | Devuelve `{"redirect": "/modulo1/landing"}` para que el cliente navegue tras cerrar sesión. |
+| `/dashboard` | GET | 🔒 Sesión activa | Hub con sidebar dinámico por permisos y licencia. |
 
 ---
 
@@ -69,20 +82,17 @@
 | `geojson_geometria` | Text | GeoJSON serializado |
 | `imagenes` | Text | JSON con la lista de URLs. Default `'[]'` |
 | `eliminado` | Boolean | Soft delete. Default `0` |
-| `creado_por_id` | Integer FK | → `usuarios.id` |
-| `fecha_creacion` | DateTime UTC | |
+| `creado_por_id` | Integer FK | → `usuarios.id` (`RESTRICT`) |
+| `fecha_creacion` | DateTime UTC | Indexado |
 
-> **Nota:** las columnas `imagenes` y `eliminado` fueron añadidas en la
-> iteración actual mediante un **mini-migrador idempotente** embebido en
-> `app/seed.py` (`_migrar_esquema()`), que ejecuta `ALTER TABLE ... ADD COLUMN`
-> cuando detecta columnas faltantes. No requiere Alembic y no pierde datos.
+> **Migración:** las columnas `imagenes` y `eliminado` fueron añadidas mediante un **mini-migrador idempotente** embebido en `app/seed.py` (`_migrar_esquema()`), que ejecuta `ALTER TABLE ... ADD COLUMN` cuando detecta columnas faltantes. No requiere Alembic y no pierde datos.
 
 ### Tabla `logs_auditoria` (fuente: Módulo 0)
 
-Se reutiliza sin cambios. Cada acción agrega una fila con
-`tabla_afectada = "incidentes_reportes"` y `registro_id = <id del incidente>`.
+Se reutiliza sin cambios. Cada acción agrega una fila con `tabla_afectada = "incidentes_reportes"` y `registro_id = <id del incidente>`.
 
-Acciones auditadas actualmente:
+**Acciones auditadas actualmente:**
+
 - `Creó incidente #N - <amenaza>`
 - `Modificó incidente #N (amenaza X → Y, comentario, geometría)`
 - `Adjuntó N imagen(es) al incidente #N`
@@ -94,29 +104,30 @@ Acciones auditadas actualmente:
 
 ### `templates/modulo2/reportes.html`
 
-- **Header**: nombre de usuario, rol, enlace a `/dashboard` y botón **Cerrar sesión**.
-- **Columna izquierda (2/3)**: mapa Leaflet + botones **Punto / Línea / Polígono / Cancelar** + banner de estado dinámico.
-- **Columna derecha (1/3)**: formulario de creación con amenaza, comentario, `<textarea>` de GeoJSON (readonly), input de imágenes múltiple y botones **Guardar** / **Exportar**.
-- **Tabla de incidentes**: ID, tipo, comentario, fecha, número de imágenes, acciones. Clic en fila abre el detalle.
-- **Modal de edición**: tipo, comentario, miniaturas de imágenes actuales, input de nuevas imágenes.
-- **Modal de detalle**: comentario completo, geometría JSON pretty-print, galería de imágenes.
-- **Lightbox**: previsualización de imagen a pantalla completa con Esc / clic-fuera para cerrar.
+- **Header:** nombre de usuario, rol, enlace a `/dashboard` y botón **Cerrar sesión**.
+- **Columna izquierda (2/3):** mapa Leaflet + botones **Punto / Línea / Polígono / Cancelar** + banner de estado dinámico.
+- **Columna derecha (1/3):** formulario de creación con amenaza, comentario, `<textarea>` de GeoJSON (readonly), input de imágenes múltiple y botones **Guardar** / **Exportar**.
+- **Tabla de incidentes:** ID, tipo, comentario, fecha, número de imágenes, acciones. Clic en fila abre el detalle.
+- **Modal de edición:** tipo, comentario, miniaturas de imágenes actuales, input de nuevas imágenes.
+- **Modal de detalle:** comentario completo, geometría JSON pretty-print, galería de imágenes.
+- **Lightbox:** previsualización de imagen a pantalla completa con Esc / clic-fuera para cerrar.
 - **Tabla de logs de auditoría** al pie.
 
-### `templates/dashboard.html` (nuevo)
+### `templates/dashboard.html`
 
 - Header con usuario y logout.
 - **Sidebar** con los 3 módulos comerciales. Cada tarjeta se muestra:
   - ✅ Habilitado si `licencia activa AND permiso del rol`.
   - 🔒 Bloqueado si falta cualquiera de los dos, con tooltip explicando cuál.
 - Tarjetas resumen con acceso directo a cada módulo.
+- Bloque destacado **"Consola de Súper Administrador"** (solo visible para superadmin).
 
-### `templates/modulo1/mapa.html` (modificado)
+### `templates/modulo1/mapa.html` (modificado para integración)
 
 - Nuevo `layerGroup` `capaIncidentes`.
 - Render con `L.geoJSON()`: puntos → `circleMarker` púrpura; líneas y polígonos con estilo púrpura translúcido.
 - Popup con tipo, comentario, fecha e imágenes (máx 3 miniaturas).
-- Checkbox **Incidentes Históricos** funcional (antes decorativo).
+- Checkbox **Incidentes Históricos** funcional.
 
 ---
 
@@ -130,10 +141,21 @@ Acciones auditadas actualmente:
 | **Auditoría CGR** | Cada acción deja rastro en `logs_auditoria` dentro de la misma transacción que el cambio. |
 | **Soft delete** | El borrado lógico preserva el histórico auditable y evita romper integridad referencial. |
 | **Validación de archivos** | Whitelist `{image/jpeg, image/png, image/webp}` y límite de 5 MB por archivo. |
-| **Exposición pública** | El endpoint del visor ciudadano no expone autor, IP ni identificadores internos. |
+| **Exposición pública** | El endpoint del visor ciudadano no expone autor, IP ni IDs internos. |
 | **Autoría del registro** | `creado_por_id` se toma siempre de la sesión, **nunca del payload** del cliente. |
-| **Session fixation** | El login limpia la sesión antes de fijar el `user_id` y rota el token CSRF. |
-| **Expulsión de usuarios logueados** | `GET /auth/login` con sesión activa redirige 303 a `/dashboard` o `/auth/clave/resolver`. |
+| **Logout** | El backend devuelve `{"redirect": "/modulo1/landing"}`; el frontend respeta ese destino. |
+
+---
+
+## 🎯 Decisiones de diseño
+
+- **Dibujo manual con Leaflet puro**: se descartó Leaflet-Geoman porque no soporta nativamente el patrón *clic-der arma / clic-izq dibuja* solicitado. Implementación propia de 3 estados (`idle`, `armed`, `drawing`).
+- **Soft delete en lugar de DELETE físico**: cumple con la normativa CGR de trazabilidad; los registros eliminados siguen existiendo para auditoría.
+- **Auditoría transaccional**: cada `registrar_auditoria()` ocurre antes del `db.commit()`, garantizando atomicidad.
+- **GeoJSON de 7 decimales**: precisión suficiente para WGS84 sin inflar el tamaño del almacenamiento.
+- **Imágenes con UUID**: evita colisiones de nombre y oculta los nombres originales subidos por el funcionario.
+- **Autoría desde sesión**: previene que un cliente malicioso falsifique `creado_por_id`.
+- **Endpoint público saneado**: filtra campos sensibles (autor, IP, IDs) antes de servir al ciudadano.
 
 ---
 
@@ -152,3 +174,37 @@ curl -i -b cookies.txt http://localhost:8000/api/modulo2/exportar-datos
 # 4) Verificar migración SQLite
 sqlite3 grd.db "PRAGMA table_info(incidentes_reportes);"
 # Debe incluir: imagenes | eliminado
+
+# 5) Verificar logs de auditoría recientes
+sqlite3 grd.db "SELECT fecha_hora, usuario_id, accion_realizada FROM logs_auditoria ORDER BY fecha_hora DESC LIMIT 5;"
+```
+
+---
+
+## 🔗 Integraciones con otros módulos
+
+| Módulo | Integración |
+| --- | --- |
+| **Módulo 0** | Reutiliza `csrf_obligatorio`, `usuario_actual`, `requiere_modulo`, `requiere_permiso` y `registrar_auditoria`. El logout redirige a la landing pública. |
+| **Módulo 1** | Provee `/api/modulo1/incidentes-publicos` para la capa conmutable "Incidentes Históricos" del visor ciudadano. |
+| **Módulo 3** (futuro) | Podrá intersectar los polígonos del Módulo 2 con datos climáticos para generar zonas de riesgo. |
+| **Módulo 4** (futuro) | Podrá cruzar los incidentes con datos censales para análisis de vulnerabilidad. |
+| **Consola admin** (`/admin`) | Un superadmin puede ver el listado de usuarios y los logs de auditoría de todas las acciones del Módulo 2. |
+
+---
+
+## 🛠️ Pendientes / próximos pasos
+
+1. **Nada crítico**: el módulo está estable y en producción interna.
+2. **Filtros por rango de fechas** en la tabla de incidentes (mejora futura).
+3. **Mapa de calor** de incidentes agrupados por comuna (mejora futura).
+4. **Exportación a shapefile** adicional al GeoJSON (para compatibilidad con ArcGIS).
+5. **Compresión automática** de imágenes subidas > 2 MB (optimización de almacenamiento).
+6. **Vista de incidentes agrupados** por tipo de amenaza en la landing ciudadana.
+
+---
+
+## 📝 Notas de versión
+
+- **v1.0.0** – Versión inicial: CRUD de incidentes, dibujo manual, subida de imágenes, exportación GeoJSON, logs de auditoría, integración con el visor público.
+- **v1.0.1** – Ajuste del logout para redirigir a `/modulo1/landing` en lugar de `/auth/login`. Integración con la nueva consola `/admin` del superadmin.

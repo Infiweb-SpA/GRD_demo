@@ -21,6 +21,11 @@ def _destino_segun_permisos(usuario: Usuario) -> str:
     dependencia circular entre routers."""
     return "/dashboard"
 
+@router.get("/")
+def raiz():
+    """La raíz redirige al dashboard. Si el usuario no tiene sesión,
+    /dashboard lo expulsará automáticamente al login (esa lógica ya existe)."""
+    return RedirectResponse("/modulo1/landing", status_code=303)
 
 @router.get("/auth/login", response_class=HTMLResponse)
 def vista_login(request: Request, db: Session = Depends(get_db)):
@@ -94,12 +99,13 @@ def vista_dashboard(
     ]
 
     return templates.TemplateResponse(
-        request,
-        "dashboard.html",
-        {
-            "app_name": settings.APP_NAME,
-            "usuario": usuario,
-            "modulos": modulos,
-            "csrf_token": emitir_csrf(request),
-        },
-    )
+    request,
+    "dashboard.html",
+    {
+        "app_name": settings.APP_NAME,
+        "usuario": usuario,
+        "modulos": modulos,
+        "csrf_token": emitir_csrf(request),
+        "es_superadmin": usuario.rol.nombre == "superadmin",   # ← nueva línea
+    },
+)

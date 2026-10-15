@@ -186,7 +186,7 @@ def resolver_clave(
 @router.post("/logout", dependencies=[Depends(csrf_obligatorio)])
 def logout(request: Request) -> dict:
     request.session.clear()
-    return {"estado": "sesion_cerrada"}
+    return {"estado": "sesion_cerrada", "redirect": "/modulo1/landing"}
 
 
 @router.get("/me")

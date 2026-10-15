@@ -140,3 +140,30 @@ def registrar_auditoria(
             direccion_ip=obtener_ip(request),
         )
     )
+
+# ---------------------------------------------------------------
+# Consola de superadministrador
+# ---------------------------------------------------------------
+def requiere_superadmin(
+    usuario: Usuario = Depends(usuario_actual),
+) -> Usuario:
+    """Solo el rol superadmin puede acceder a las APIs de administración."""
+    if usuario.rol.nombre != "superadmin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo el superadministrador puede acceder a esta sección.",
+        )
+    return usuario
+
+
+def get_current_superadmin_html(
+    request: Request, db: Session = Depends(get_db)
+) -> Usuario:
+    """Versión HTML: si no es superadmin, redirige al dashboard."""
+    usuario = get_current_user_html(request, db)
+    if usuario.rol.nombre != "superadmin":
+        raise HTTPException(
+            status_code=status.HTTP_303_SEE_OTHER,
+            headers={"Location": "/dashboard"},
+        )
+    return usuario
