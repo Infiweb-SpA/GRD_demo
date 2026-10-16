@@ -33,6 +33,11 @@
             </label>
 
             <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" id="albergues" checked class="rounded">
+                <span class="text-sm">Albergues</span>
+            </label>
+
+            <label class="flex items-center space-x-2 cursor-pointer">
                 <input type="checkbox" id="incidentes" checked class="rounded">
                 <span class="text-sm">Incidentes Históricos</span>
             </label>
@@ -57,6 +62,10 @@
                 <div class="flex items-center space-x-2">
                     <div class="w-4 h-4 bg-purple-500 rounded-full"></div>
                     <span>Incidente Reportado</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <div class="w-4 h-4 bg-emerald-500 rounded-full"></div>
+                    <span>Albergue</span>
                 </div>
             </div>
         </div>
@@ -84,6 +93,7 @@
         const capaZonas      = L.layerGroup().addTo(map);
         const capaEstaciones = L.layerGroup().addTo(map);
         const capaIncidentes = L.layerGroup().addTo(map);
+        const capaAlbergues  = L.layerGroup().addTo(map);
 
         // ============================================================
         //  Colores oficiales por severidad (Módulo 3)
@@ -201,6 +211,60 @@
         }
 
         // ============================================================
+        //  Módulo 5: albergues (endpoint público saneado)
+        // ============================================================
+        async function cargarAlbergues() {
+            try {
+                const response = await fetch('/api/modulo1/albergues-publicos');
+                if (!response.ok) throw new Error('Error de red');
+                const geojson = await response.json();
+                renderizarAlbergues(geojson);
+            } catch (error) {
+                console.error('Error cargando albergues:', error);
+            }
+        }
+
+        function renderizarAlbergues(geojson) {
+            if (!geojson || !geojson.features) return;
+
+            L.geoJSON(geojson, {
+                pointToLayer: (feature, latlng) =>
+                    L.circleMarker(latlng, {
+                        radius: 9,
+                        color: '#ffffff',
+                        weight: 2,
+                        fillColor: '#10b981',
+                        fillOpacity: 0.95,
+                    }),
+                onEachFeature: (feature, layer) => {
+                    const p = feature.properties || {};
+                    const s = p.servicios || {};
+                    const iconos = [];
+                    if (s.agua_potable) iconos.push('💧 agua');
+                    if (s.electricidad) iconos.push('⚡ luz');
+                    if (s.sanitarios)   iconos.push('🚻 sanitarios');
+                    if (s.cocina)       iconos.push('🍲 cocina');
+                    if (s.internet)     iconos.push('📶 internet');
+                    layer.bindPopup(`
+                        <div style="min-width:220px">
+                            <b style="color:#047857;font-size:14px">🏠 ${p.nombre}</b><br>
+                            <div style="margin-top:6px;font-size:12px;color:#374151">
+                                ${p.direccion || 'Sin dirección registrada'}<br>
+                                <b>Capacidad:</b> ${p.capacidad} personas
+                            </div>
+                            <div style="margin-top:6px;font-size:11px;color:#059669">
+                                ${iconos.length ? iconos.join(' · ') : 'Sin servicios informados'}
+                            </div>
+                            <div style="margin-top:6px;font-size:11px;color:#9ca3af">
+                                Comuna: ${p.comuna}
+                            </div>
+                        </div>
+                    `);
+                },
+            }).addTo(capaAlbergues);
+        }
+
+        // ============================================================
         //  Toggles
         // ============================================================
         function toggleCapa(capa, visible) {
@@ -216,6 +280,9 @@
         document.getElementById('incidentes').addEventListener('change', function () {
             toggleCapa(capaIncidentes, this.checked);
         });
+        document.getElementById('albergues').addEventListener('change', function () {
+            toggleCapa(capaAlbergues, this.checked);
+        });
 
         // ============================================================
         //  Init
@@ -223,6 +290,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             cargarZonasRiesgo();
             cargarIncidentes();
+            cargarAlbergues();
         });
     </script>
 </body>

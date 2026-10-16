@@ -270,3 +270,53 @@ def zonas_riesgo_publicas(db: Session = Depends(get_db)):
         "type": "FeatureCollection",
         "features": features,
     }
+
+
+@router.get("/api/modulo1/albergues-publicos")
+def albergues_publicos(db: Session = Depends(get_db)):
+    """
+    FeatureCollection pública de albergues municipales activos (Ley 21.364).
+
+    La ciudadanía debe poder ubicar dónde refugiarse durante una emergencia.
+    Solo expone albergues con estado 'activo' y con coordenadas.
+
+    NO expone: datos de contacto del encargado (privacidad), trazabilidad
+    interna ni vinculaciones a zonas de riesgo.
+    """
+    albergues = (
+        db.query(models.Albergue)
+        .filter(
+            models.Albergue.activo == True,  # noqa: E712
+            models.Albergue.estado == "activo",
+            models.Albergue.lat.isnot(None),
+            models.Albergue.lon.isnot(None),
+        )
+        .order_by(models.Albergue.comuna, models.Albergue.nombre)
+        .all()
+    )
+
+    features = []
+    for a in albergues:
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [a.lon, a.lat]},
+            "properties": {
+                "id": a.id,
+                "nombre": a.nombre,
+                "comuna": a.comuna,
+                "direccion": a.direccion,
+                "capacidad": a.capacidad,
+                "servicios": {
+                    "agua_potable": a.srv_agua_potable,
+                    "electricidad": a.srv_electricidad,
+                    "sanitarios": a.srv_sanitarios,
+                    "cocina": a.srv_cocina,
+                    "internet": a.srv_internet,
+                },
+            },
+        })
+
+    return {
+        "type": "FeatureCollection",
+        "features": features,
+    }

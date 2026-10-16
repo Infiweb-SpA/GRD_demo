@@ -96,6 +96,9 @@ def vista_dashboard(
         _bloque("modulo_4", "Vulnerabilidad y EDAN",
                 "Análisis de vulnerabilidad y evaluación de daños",
                 "/modulo4/vulnerabilidad", "vulnerabilidad:consultar", "📊"),
+        _bloque("modulo_5", "Albergues y Logística",
+                "Catastro de albergues e inventario de recursos",
+                "/modulo5/albergues", "albergues:leer", "🏠"),
     ]
 
     return templates.TemplateResponse(

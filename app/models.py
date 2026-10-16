@@ -269,3 +269,106 @@ class FichaEDAN(Base):
 
     creado_por: Mapped["Usuario | None"] = relationship()
     incidente: Mapped["Incidente | None"] = relationship()
+
+
+# =========================================================================
+# MÓDULO 5 — Albergues y Logística
+# =========================================================================
+
+
+class Albergue(Base):
+    """Catastro de albergues municipales (Módulo 5).
+
+    Registra dónde puede refugiarse la población y con qué servicios cuenta.
+    El vínculo con una zona de riesgo del Módulo 3 es estrictamente OPCIONAL
+    (decisión D4): sirve para planificar evacuación, no es obligatorio para
+    dar de alta un albergue.
+    """
+
+    __tablename__ = "albergues"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(200), nullable=False)
+    comuna: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    direccion: Mapped[str | None] = mapped_column(String(300))
+    lat: Mapped[float | None] = mapped_column(Float)
+    lon: Mapped[float | None] = mapped_column(Float)
+    capacidad: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    estado: Mapped[str] = mapped_column(
+        String(20), default="activo", nullable=False
+    )  # activo | mantencion | inactivo
+
+    # --- Servicios disponibles --- (permiten priorizar en una emergencia)
+    srv_agua_potable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    srv_electricidad: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    srv_sanitarios: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    srv_cocina: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    srv_internet: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # --- Contacto (encargado del albergue) ---
+    contacto_nombre: Mapped[str | None] = mapped_column(String(200))
+    contacto_telefono: Mapped[str | None] = mapped_column(String(50))
+
+    # --- D4: vínculo estrictamente opcional con zona de riesgo del M3 ---
+    zona_riesgo_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("zonas_riesgo.id", ondelete="SET NULL")
+    )
+
+    # --- Trazabilidad ---
+    creado_por_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id", ondelete="SET NULL")
+    )
+    activo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    creado_en: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    creado_por: Mapped["Usuario | None"] = relationship()
+    zona_riesgo: Mapped["ZonaRiesgo | None"] = relationship()
+
+
+class RecursoInventario(Base):
+    """Inventario de recursos logísticos con discriminador de categoría (D3).
+
+    Una sola tabla para las 3 categorías del inventario — ``maquinaria``,
+    ``abrigo`` y ``alimento`` — diferenciadas por ``categoria``. Evita 3 tablas
+    casi idénticas y permite consultas globales ("¿cuánto abrigo hay en la
+    comuna?") con la misma estructura.
+
+    La asignación logística es un FK opcional a ``albergues``: si
+    ``estado='asignado'``, el recurso está destinado a ese albergue. El vínculo
+    con un incidente del Módulo 2 también es estrictamente opcional (D4).
+    """
+
+    __tablename__ = "recursos_inventario"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(200), nullable=False)
+    categoria: Mapped[str] = mapped_column(
+        String(20), index=True, nullable=False
+    )  # maquinaria | abrigo | alimento  (D3)
+    cantidad: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    unidad: Mapped[str] = mapped_column(String(50), default="unidades", nullable=False)
+    estado: Mapped[str] = mapped_column(
+        String(20), default="disponible", nullable=False
+    )  # disponible | asignado | mantencion
+    comuna: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+
+    # --- Logística: destino del recurso (opcional) ---
+    albergue_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("albergues.id", ondelete="SET NULL")
+    )
+    # --- D4: vínculo estrictamente opcional al incidente que lo activó ---
+    incidente_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("incidentes_reportes.id", ondelete="SET NULL")
+    )
+    notas: Mapped[str | None] = mapped_column(Text)
+
+    # --- Trazabilidad ---
+    creado_por_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id", ondelete="SET NULL")
+    )
+    activo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    creado_en: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    creado_por: Mapped["Usuario | None"] = relationship()
+    albergue: Mapped["Albergue | None"] = relationship()
+    incidente: Mapped["Incidente | None"] = relationship()

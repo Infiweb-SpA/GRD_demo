@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content="{{ csrf_token or '' }}" />
+    <title>Recursos - GRD Comunal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      .seccion-titulo { font-size: 11px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .05em; color: #4338ca; margin: 14px 0 6px; }
+      .badge { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+      .cat-maquinaria { background: #dbeafe; color: #1e40af; }
+      .cat-abrigo     { background: #fce7f3; color: #9d174d; }
+      .cat-alimento   { background: #dcfce7; color: #166534; }
+      .est-disponible { background: #dcfce7; color: #166534; }
+      .est-asignado   { background: #e0e7ff; color: #3730a3; }
+      .est-mantencion { background: #fef3c7; color: #92400e; }
+    </style>
+  </head>
+  <body class="bg-gray-50 text-gray-800 font-sans antialiased">
+
+    <header class="bg-indigo-800 text-white shadow-lg">
+      <div class="container mx-auto px-4 py-6 flex justify-between items-center flex-wrap gap-3">
+        <div>
+          <h1 class="text-3xl font-bold">Inventario de Recursos</h1>
+          <p class="text-indigo-200">Módulo 5 — Logística: maquinaria · abrigo · alimento</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="text-right">
+            <p class="text-sm text-indigo-200">Sesión activa:</p>
+            <p class="font-semibold">{{ user.username }} ({{ user.rol.nombre }})</p>
+          </div>
+          <a href="/dashboard"
+             class="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">← Panel</a>
+          <a href="/modulo5/albergues"
+             class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">🏠 Albergues</a>
+          <button id="btnLogout"
+                  class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">Cerrar sesión</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-8">
+
+      <!-- KPIs por categoría -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div class="bg-white rounded-xl shadow p-5 border-l-4 border-blue-500">
+          <p class="text-xs text-slate-500 uppercase">🔧 Maquinaria</p>
+          <p id="kpiMaq" class="text-3xl font-bold text-slate-800">—</p>
+          <p id="kpiMaqDet" class="text-xs text-slate-400">—</p>
+        </div>
+        <div class="bg-white rounded-xl shadow p-5 border-l-4 border-pink-500">
+          <p class="text-xs text-slate-500 uppercase">🧣 Abrigo</p>
+          <p id="kpiAbr" class="text-3xl font-bold text-slate-800">—</p>
+          <p id="kpiAbrDet" class="text-xs text-slate-400">—</p>
+        </div>
+        <div class="bg-white rounded-xl shadow p-5 border-l-4 border-emerald-500">
+          <p class="text-xs text-slate-500 uppercase">🍲 Alimento</p>
+          <p id="kpiAli" class="text-3xl font-bold text-slate-800">—</p>
+          <p id="kpiAliDet" class="text-xs text-slate-400">—</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+        <!-- Formulario -->
+        <div class="lg:col-span-1 bg-white rounded-lg shadow-md p-6 h-fit">
+          <h2 class="text-xl font-bold border-b pb-2 mb-2" id="formTitulo">Nuevo Recurso</h2>
+
+          <div class="seccion-titulo">Identificación</div>
+          <label class="block text-xs text-slate-500 mb-1">Nombre *</label>
+          <input id="rNombre" type="text" class="w-full rounded-md border border-gray-300 p-2 text-sm mb-2" />
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Categoría *</label>
+              <select id="rCategoria" class="w-full rounded-md border border-gray-300 p-2 text-sm">
+                {% for c in categorias %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Comuna *</label>
+              <select id="rComuna" class="w-full rounded-md border border-gray-300 p-2 text-sm">
+                <option value="">— Seleccionar —</option>
+                {% for c in comunas %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 mt-2">
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Cantidad</label>
+              <input id="rCantidad" type="number" min="0" value="0" class="w-full rounded-md border border-gray-300 p-2 text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Unidad</label>
+              <input id="rUnidad" type="text" value="unidades" class="w-full rounded-md border border-gray-300 p-2 text-sm" />
+            </div>
+          </div>
+
+          <label class="block text-xs text-slate-500 mt-2 mb-1">Estado</label>
+          <select id="rEstado" class="w-full rounded-md border border-gray-300 p-2 text-sm">
+            {% for e in estados %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
+          </select>
+
+          <div class="seccion-titulo">Logística</div>
+          <label class="block text-xs text-slate-500 mb-1">Albergue destino (opcional)</label>
+          <select id="rAlbergue" class="w-full rounded-md border border-gray-300 p-2 text-sm">
+            <option value="">— Sin asignar —</option>
+          </select>
+          <p class="text-xs text-slate-400 mt-1">Si eliges un albergue, el estado pasa a <b>asignado</b> automáticamente.</p>
+
+          <div class="seccion-titulo">Vínculo opcional (D4)</div>
+          <label class="block text-xs text-slate-500 mb-1">Incidente asociado (Módulo 2)</label>
+          <select id="rIncidente" class="w-full rounded-md border border-gray-300 p-2 text-sm">
+            <option value="">— Sin vínculo —</option>
+          </select>
+
+          <div class="seccion-titulo">Notas</div>
+          <textarea id="rNotas" rows="2" class="w-full rounded-md border border-gray-300 p-2 text-sm"></textarea>
+
+          <div class="flex gap-2 mt-4">
+            <button id="btnGuardar" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-md text-sm font-semibold">
+              💾 Guardar recurso
+            </button>
+            <button id="btnCancelar" class="hidden bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-2 rounded-md text-sm font-semibold">
+              Cancelar
+            </button>
+          </div>
+          <p id="estadoForm" class="text-xs text-center mt-2 min-h-[1rem]"></p>
+        </div>
+
+        <!-- Panel logístico -->
+        <div class="lg:col-span-2 bg-white rounded-lg shadow-md p-6">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold">Asignación Logística por Albergue</h2>
+            <span id="logResumen" class="text-xs text-slate-500">—</span>
+          </div>
+          <div id="panelLogistica" class="space-y-3">
+            <p class="text-center text-gray-500 py-4">Cargando...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabla de inventario -->
+      <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+          <h2 class="text-xl font-bold">Inventario</h2>
+          <div class="flex gap-2">
+            <select id="filtroComuna" class="rounded-md border border-gray-300 p-2 text-sm">
+              <option value="">Todas las comunas</option>
+              {% for c in comunas %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+            </select>
+            <select id="filtroCategoria" class="rounded-md border border-gray-300 p-2 text-sm">
+              <option value="">Todas las categorías</option>
+              {% for c in categorias %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+            </select>
+            <select id="filtroEstado" class="rounded-md border border-gray-300 p-2 text-sm">
+              <option value="">Todos los estados</option>
+              {% for e in estados %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recurso</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categoría</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Comuna</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cantidad</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Destino</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tablaRecursos" class="bg-white divide-y divide-gray-200">
+              <tr><td colspan="7" class="px-4 py-4 text-center text-gray-500">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      async function obtenerCsrf() {
+        const r = await fetch("/auth/csrf");
+        return (await r.json()).csrf_token || "";
+      }
+
+      let editId = null;
+      let recursosCache = [];
+      let alberguesMap = {};
+      let alberguesCache = [];
+
+      // --- Carga de catálogos ---
+      async function cargarAlbergues() {
+        try {
+          const r = await fetch("/api/modulo5/albergues");
+          if (!r.ok) return;
+          const data = await r.json();
+          alberguesCache = data.albergues || [];
+          alberguesMap = {};
+          alberguesCache.forEach((a) => (alberguesMap[a.id] = a.nombre));
+          $("rAlbergue").innerHTML = '<option value="">— Sin asignar —</option>' +
+            alberguesCache.map((a) => `<option value="${a.id}">${a.nombre} · ${a.comuna}</option>`).join("");
+        } catch (e) { console.error(e); }
+      }
+
+      async function cargarIncidentes() {
+        try {
+          const r = await fetch("/api/modulo5/incidentes-disponibles");
+          if (!r.ok) return;
+          const data = await r.json();
+          $("rIncidente").innerHTML = '<option value="">— Sin vínculo —</option>' +
+            (data.incidentes || []).map((i) => `<option value="${i.id}">#${i.id} · ${i.amenaza_tipo}</option>`).join("");
+        } catch (e) { console.error(e); }
+      }
+
+      async function cargarResumen() {
+        const comuna = $("filtroComuna").value;
+        const qs = comuna ? `?comuna=${encodeURIComponent(comuna)}` : "";
+        try {
+          const r = await fetch(`/api/modulo5/inventario-resumen${qs}`);
+          if (!r.ok) return;
+          const d = await r.json();
+          const pc = d.por_categoria;
+          $("kpiMaq").textContent = pc.maquinaria.cantidad_total.toLocaleString("es-CL");
+          $("kpiMaqDet").textContent = `${pc.maquinaria.items} ítems · ${pc.maquinaria.asignados} asignados`;
+          $("kpiAbr").textContent = pc.abrigo.cantidad_total.toLocaleString("es-CL");
+          $("kpiAbrDet").textContent = `${pc.abrigo.items} ítems · ${pc.abrigo.asignados} asignados`;
+          $("kpiAli").textContent = pc.alimento.cantidad_total.toLocaleString("es-CL");
+          $("kpiAliDet").textContent = `${pc.alimento.items} ítems · ${pc.alimento.asignados} asignados`;
+        } catch (e) { console.error(e); }
+      }
+
+      async function cargarLogistica() {
+        const comuna = $("filtroComuna").value;
+        const qs = comuna ? `?comuna=${encodeURIComponent(comuna)}` : "";
+        try {
+          const r = await fetch(`/api/modulo5/logistica${qs}`);
+          if (!r.ok) return;
+          const d = await r.json();
+          $("logResumen").textContent =
+            `${d.resumen.albergues_activos} albergues · ${d.resumen.capacidad_total} personas · ${d.resumen.recursos_asignados} recursos asignados`;
+          const cont = $("panelLogistica");
+          if (!d.albergues.length) {
+            cont.innerHTML = '<p class="text-center text-gray-500 py-4">No hay albergues activos.</p>';
+            return;
+          }
+          cont.innerHTML = d.albergues.map((a) => {
+            const chips = a.recursos.length
+              ? a.recursos.map((r) =>
+                  `<span class="inline-block bg-slate-100 border border-slate-200 rounded px-2 py-0.5 text-xs mr-1 mb-1">
+                     <b>${r.cantidad}</b> ${r.unidad} · ${r.nombre}
+                   </span>`).join("")
+              : '<span class="text-xs text-slate-400">Sin recursos asignados</span>';
+            return `
+              <div class="border border-slate-200 rounded-lg p-3">
+                <div class="flex justify-between items-center mb-2">
+                  <div>
+                    <span class="font-semibold text-slate-800">${a.nombre}</span>
+                    <span class="text-xs text-slate-500">· ${a.comuna}</span>
+                  </div>
+                  <span class="text-xs text-slate-500">Capacidad ${a.capacidad} · ${a.total_recursos} recursos</span>
+                </div>
+                <div>${chips}</div>
+              </div>`;
+          }).join("");
+        } catch (e) { console.error(e); }
+      }
+
+      // --- Tabla ---
+      async function cargarRecursos() {
+        const p = new URLSearchParams();
+        if ($("filtroComuna").value) p.set("comuna", $("filtroComuna").value);
+        if ($("filtroCategoria").value) p.set("categoria", $("filtroCategoria").value);
+        if ($("filtroEstado").value) p.set("estado", $("filtroEstado").value);
+        try {
+          const r = await fetch(`/api/modulo5/recursos?${p.toString()}`);
+          if (!r.ok) throw new Error("Error de red");
+          const data = await r.json();
+          recursosCache = data.recursos || [];
+          pintarTabla();
+        } catch (e) {
+          console.error(e);
+          $("tablaRecursos").innerHTML =
+            '<tr><td colspan="7" class="px-4 py-4 text-center text-red-500">Error cargando recursos.</td></tr>';
+        }
+      }
+
+      function pintarTabla() {
+        const tb = $("tablaRecursos");
+        if (!recursosCache.length) {
+          tb.innerHTML = '<tr><td colspan="7" class="px-4 py-4 text-center text-gray-500">No hay recursos para el filtro seleccionado.</td></tr>';
+          return;
+        }
+        tb.innerHTML = recursosCache.map((r) => {
+          const destino = r.albergue_id ? (alberguesMap[r.albergue_id] || `#${r.albergue_id}`)
+                        : (r.incidente_id ? `Incidente #${r.incidente_id}` : "—");
+          return `
+            <tr class="hover:bg-gray-50">
+              <td class="px-4 py-3 text-sm font-medium text-gray-900">${r.nombre}</td>
+              <td class="px-4 py-3"><span class="badge cat-${r.categoria}">${r.categoria}</span></td>
+              <td class="px-4 py-3 text-sm text-gray-700">${r.comuna}</td>
+              <td class="px-4 py-3 text-sm text-right text-gray-700">${r.cantidad} <span class="text-xs text-slate-400">${r.unidad}</span></td>
+              <td class="px-4 py-3"><span class="badge est-${r.estado}">${r.estado}</span></td>
+              <td class="px-4 py-3 text-xs text-gray-600">${destino}</td>
+              <td class="px-4 py-3 text-right space-x-2 whitespace-nowrap">
+                <button data-edit="${r.id}" class="text-indigo-700 hover:text-indigo-900 text-sm font-medium">Editar</button>
+                <button data-del="${r.id}" class="text-red-600 hover:text-red-800 text-sm font-medium">Eliminar</button>
+              </td>
+            </tr>`;
+        }).join("");
+        tb.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => cargarParaEditar(+b.dataset.edit)));
+        tb.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => eliminar(+b.dataset.del)));
+      }
+
+      // --- Formulario ---
+      function construirPayload() {
+        return {
+          nombre: $("rNombre").value,
+          categoria: $("rCategoria").value,
+          comuna: $("rComuna").value,
+          cantidad: parseInt($("rCantidad").value || "0", 10),
+          unidad: $("rUnidad").value || "unidades",
+          estado: $("rEstado").value,
+          albergue_id: $("rAlbergue").value ? parseInt($("rAlbergue").value, 10) : null,
+          incidente_id: $("rIncidente").value ? parseInt($("rIncidente").value, 10) : null,
+          notas: $("rNotas").value || null,
+        };
+      }
+
+      async function guardar() {
+        const payload = construirPayload();
+        const est = $("estadoForm");
+        est.classList.remove("text-red-600", "text-emerald-600");
+        if (!payload.nombre.trim() || !payload.comuna) {
+          est.textContent = "✖ Nombre y comuna son obligatorios.";
+          est.classList.add("text-red-600"); return;
+        }
+        try {
+          const csrf = await obtenerCsrf();
+          const ed = editId !== null;
+          const r = await fetch(ed ? `/api/modulo5/recursos/${editId}` : "/api/modulo5/recursos", {
+            method: ed ? "PUT" : "POST",
+            headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+            body: JSON.stringify(payload),
+          });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(data.detail || "Error guardando");
+          est.textContent = ed ? "✔ Recurso actualizado." : `✔ Recurso #${data.recurso_id} creado.`;
+          est.classList.add("text-emerald-600");
+          limpiarFormulario();
+          await refrescarTodo();
+        } catch (err) {
+          est.textContent = "✖ " + err.message;
+          est.classList.add("text-red-600");
+        }
+      }
+
+      function limpiarFormulario() {
+        editId = null;
+        $("formTitulo").textContent = "Nuevo Recurso";
+        $("btnGuardar").textContent = "💾 Guardar recurso";
+        $("btnCancelar").classList.add("hidden");
+        $("rNombre").value = "";
+        $("rCategoria").value = "abrigo";
+        $("rComuna").value = "";
+        $("rCantidad").value = 0;
+        $("rUnidad").value = "unidades";
+        $("rEstado").value = "disponible";
+        $("rAlbergue").value = "";
+        $("rIncidente").value = "";
+        $("rNotas").value = "";
+      }
+
+      function cargarParaEditar(id) {
+        const r = recursosCache.find((x) => x.id === id);
+        if (!r) return;
+        editId = r.id;
+        $("formTitulo").textContent = `Editando recurso #${r.id}`;
+        $("btnGuardar").textContent = "Actualizar recurso";
+        $("btnCancelar").classList.remove("hidden");
+        $("rNombre").value = r.nombre;
+        $("rCategoria").value = r.categoria;
+        $("rComuna").value = r.comuna;
+        $("rCantidad").value = r.cantidad;
+        $("rUnidad").value = r.unidad;
+        $("rEstado").value = r.estado;
+        $("rAlbergue").value = r.albergue_id ? String(r.albergue_id) : "";
+        $("rIncidente").value = r.incidente_id ? String(r.incidente_id) : "";
+        $("rNotas").value = r.notas || "";
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      async function eliminar(id) {
+        if (!confirm(`¿Eliminar el recurso #${id}? (borrado lógico, queda en auditoría)`)) return;
+        try {
+          const csrf = await obtenerCsrf();
+          const r = await fetch(`/api/modulo5/recursos/${id}`, { method: "DELETE", headers: { "X-CSRF-Token": csrf } });
+          if (!r.ok) { const e = await r.json().catch(() => ({})); alert("Error: " + (e.detail || "desconocido")); return; }
+          if (editId === id) limpiarFormulario();
+          await refrescarTodo();
+        } catch { alert("Error de conexión."); }
+      }
+
+      async function refrescarTodo() {
+        await Promise.all([cargarRecursos(), cargarResumen(), cargarLogistica()]);
+      }
+
+      $("btnGuardar").addEventListener("click", guardar);
+      $("btnCancelar").addEventListener("click", limpiarFormulario);
+      ["filtroComuna", "filtroCategoria", "filtroEstado"].forEach((id) =>
+        $(id).addEventListener("change", refrescarTodo));
+      $("btnLogout").addEventListener("click", async () => {
+        if (!confirm("¿Cerrar sesión?")) return;
+        try {
+          const csrf = await obtenerCsrf();
+          const r = await fetch("/auth/logout", { method: "POST", headers: { "X-CSRF-Token": csrf } });
+          const d = await r.json().catch(() => ({}));
+          window.location.href = d.redirect || "/modulo1/landing";
+        } catch { window.location.href = "/modulo1/landing"; }
+      });
+
+      document.addEventListener("DOMContentLoaded", async () => {
+        await Promise.all([cargarAlbergues(), cargarIncidentes()]);
+        await refrescarTodo();
+      });
+    </script>
+  </body>
+</html>
