@@ -122,3 +122,53 @@ class AlertaMunicipalActiva(Base):
     periodo_estimado: Mapped[str] = mapped_column(String(255), nullable=False)
     activa: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     creado_en: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    
+# =========================================================================
+# MÓDULO 3 — Inteligencia Predictiva de Zonas de Riesgo
+# =========================================================================
+from sqlalchemy import Date, Float, UniqueConstraint  # añadir a imports si no están
+
+
+class DatoFluvialHistorico(Base):
+    """
+    Cache de la API Open-Meteo Flood.
+    Almacena caudal diario (m³/s) por comuna para poder calcular
+    percentiles P90/P95 y detectar crecidas en ventanas temporales.
+    """
+    __tablename__ = "datos_fluviales_historicos"
+
+    id = Column(Integer, primary_key=True)
+    comuna = Column(String(100), index=True, nullable=False)
+    fecha = Column(Date, index=True, nullable=False)
+    caudal_m3_s = Column(Float, nullable=False)
+    lat = Column(Float)
+    lon = Column(Float)
+
+    __table_args__ = (
+        UniqueConstraint("comuna", "fecha", name="uq_fluvial_comuna_fecha"),
+    )
+
+
+class ZonaRiesgo(Base):
+    """
+    Polígono de riesgo oficial consolidado (Ley 21.364).
+    Puede ser generado automáticamente por el motor del Módulo 3
+    o creado/ajustado manualmente por un administrador.
+    """
+    __tablename__ = "zonas_riesgo"
+
+    id = Column(Integer, primary_key=True)
+    comuna = Column(String(100), index=True, nullable=False)
+    nombre = Column(String(200), nullable=False)
+    severidad = Column(String(20), nullable=False)  # bajo|medio|alto|critico
+    geojson_geometria = Column(Text, nullable=False)  # Polygon WGS84
+    motivo = Column(String(500))  # resumen legible (para el ciudadano)
+    datos_origen = Column(Text)   # JSON con scores, P90/P95, incidentes vinculados
+    activa = Column(Boolean, default=True, index=True)
+    generado_automaticamente = Column(Boolean, default=True)
+    creado_por_id = Column(
+        Integer,
+        ForeignKey("usuarios.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    fecha_generacion = Column(DateTime, default=datetime.utcnow, index=True)

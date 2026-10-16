@@ -11,7 +11,7 @@ from datetime import datetime
 
 from app.database import get_db
 from app.models import Incidente
-
+from app import models
 router = APIRouter()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -230,4 +230,43 @@ async def datos_mapa() -> Dict[str, Any]:
     return {
         "zonas_riesgo": [],
         "estaciones_fluviales": [],
+    }
+    
+    
+@router.get("/api/modulo1/zonas-riesgo-publicas")
+def zonas_riesgo_publicas(db: Session = Depends(get_db)):
+    """
+    FeatureCollection pública de zonas de riesgo consolidadas (Ley 21.364).
+    Solo expone polígonos activos.
+    NO expone: datos_origen, creado_por_id, ni generado_automaticamente.
+    """
+    zonas = (
+        db.query(models.ZonaRiesgo)
+        .filter(models.ZonaRiesgo.activa == True)  # noqa: E712
+        .order_by(models.ZonaRiesgo.severidad.desc(), models.ZonaRiesgo.id.desc())
+        .all()
+    )
+
+    features = []
+    for z in zonas:
+        try:
+            geom = json.loads(z.geojson_geometria)
+        except (ValueError, TypeError):
+            continue
+
+        features.append({
+            "type": "Feature",
+            "geometry": geom,
+            "properties": {
+                "id": z.id,
+                "comuna": z.comuna,
+                "nombre": z.nombre,
+                "severidad": z.severidad,
+                "motivo": z.motivo,
+            },
+        })
+
+    return {
+        "type": "FeatureCollection",
+        "features": features,
     }
