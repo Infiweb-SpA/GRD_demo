@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content="{{ csrf_token or '' }}" />
+    <title>Vulnerabilidad y EDAN - GRD Comunal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+      .leaflet-container { height: 100%; width: 100%; }
+      #mapaVul { height: 600px; width: 100%; border-radius: 0.5rem; }
+      .badge-sev { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+      .badge-bajo    { background: #d1fae5; color: #065f46; }
+      .badge-medio   { background: #fef3c7; color: #92400e; }
+      .badge-alto    { background: #ffedd5; color: #9a3412; }
+      .badge-critico { background: #fee2e2; color: #991b1b; }
+    </style>
+  </head>
+  <body class="bg-gray-50 text-gray-800 font-sans antialiased">
+
+    <header class="bg-indigo-800 text-white shadow-lg">
+      <div class="container mx-auto px-4 py-6 flex justify-between items-center flex-wrap gap-3">
+        <div>
+          <h1 class="text-3xl font-bold">Vulnerabilidad y Evaluación de Daños</h1>
+          <p class="text-indigo-200">Módulo 4 — Cruce datos censales × zonas de riesgo</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="text-right">
+            <p class="text-sm text-indigo-200">Sesión activa:</p>
+            <p class="font-semibold">{{ user.username }} ({{ user.rol.nombre }})</p>
+          </div>
+          <a href="/dashboard"
+             class="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+            ← Panel
+          </a>
+          <a href="/modulo4/edan"
+             class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+            📝 Ficha EDAN
+          </a>
+          <button id="btnLogout"
+                  class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-8">
+
+      <!-- KPIs -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div class="bg-white rounded-xl shadow p-5 border-l-4 border-indigo-500">
+          <p class="text-xs text-slate-500 uppercase">Población total</p>
+          <p id="kpiTotal" class="text-3xl font-bold text-slate-800">—</p>
+        </div>
+        <div class="bg-white rounded-xl shadow p-5 border-l-4 border-red-500">
+          <p class="text-xs text-slate-500 uppercase">Población expuesta</p>
+          <p id="kpiExpuesta" class="text-3xl font-bold text-red-700">—</p>
+          <p id="kpiPct" class="text-xs text-slate-400">—</p>
+        </div>
+        <div class="bg-white rounded-xl shadow p-5 border-l-4 border-amber-500">
+          <p class="text-xs text-slate-500 uppercase">Viviendas expuestas</p>
+          <p id="kpiViviendas" class="text-3xl font-bold text-slate-800">—</p>
+        </div>
+        <div class="bg-white rounded-xl shadow p-5 border-l-4 border-emerald-500">
+          <p class="text-xs text-slate-500 uppercase">Infraestructura crítica</p>
+          <p class="text-3xl font-bold text-slate-800">
+            <span id="kpiEscuelas">—</span>
+            <span class="text-sm font-normal text-slate-400">esc.</span>
+            ·
+            <span id="kpiPostas">—</span>
+            <span class="text-sm font-normal text-slate-400">postas</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Grid: mapa + control -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+        <div class="lg:col-span-2 bg-white rounded-lg shadow-md p-6">
+          <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+            <h2 class="text-xl font-bold">Mapa de Exposición</h2>
+            <div class="flex items-center gap-4 text-xs text-slate-500">
+              <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-red-500"></span> Sector expuesto</span>
+              <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-blue-500"></span> Sector no expuesto</span>
+            </div>
+          </div>
+          <div id="mapaVul" class="w-full rounded-lg border border-gray-300"></div>
+          <p class="text-xs text-gray-500 mt-2">
+            Polígonos = zonas de riesgo activas (Módulo 3). Puntos = centroides de sectores censales.
+          </p>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md p-6 h-fit space-y-5">
+          <h2 class="text-xl font-bold border-b pb-2">Filtros</h2>
+
+          <div>
+            <label for="filtroComuna" class="block text-sm font-medium text-gray-700 mb-1">
+              Filtrar por comuna
+            </label>
+            <select id="filtroComuna"
+                    class="w-full rounded-md border border-gray-300 p-2 text-sm">
+              <option value="">Todas las comunas</option>
+              {% for c in comunas %}
+              <option value="{{ c }}">{{ c }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="space-y-2 pt-2 border-t border-slate-100">
+            <p class="text-xs text-slate-500">
+              El cruce determinista ubica el centroide de cada sector censal dentro de los
+              polígonos de riesgo activos y suma población e infraestructura expuesta.
+            </p>
+            <a href="/modulo4/edan"
+               class="block w-full text-center bg-amber-500 hover:bg-amber-600 text-white py-2 rounded-md text-sm font-semibold transition">
+              📝 Registrar Ficha EDAN
+            </a>
+            <p id="estadoAnalisis" class="text-xs text-slate-500 text-center min-h-[1rem]"></p>
+          </div>
+
+          <div class="pt-3 border-t border-slate-100 text-xs text-slate-500 space-y-1">
+            <p><b>Alcance del análisis:</b></p>
+            <p>Sectores evaluados: <span id="statSectores" class="font-mono">—</span></p>
+            <p>Zonas activas: <span id="statZonas" class="font-mono">—</span></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabla por zona -->
+      <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-xl font-bold">Exposición por Zona de Riesgo</h2>
+          <span class="text-xs text-slate-500 italic">Zonas activas que intersectan sectores censales</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Zona</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Comuna</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Severidad</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Población</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Viviendas</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Escuelas</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Postas</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Sectores</th>
+              </tr>
+            </thead>
+            <tbody id="tablaZonas" class="bg-white divide-y divide-gray-200">
+              <tr>
+                <td colspan="8" class="px-4 py-4 text-center text-gray-500">Cargando...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Sectores expuestos -->
+      <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-xl font-bold mb-4">Sectores Censales Expuestos</h2>
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sector</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Comuna</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Población</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Viviendas</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Escuelas</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Postas</th>
+              </tr>
+            </thead>
+            <tbody id="tablaSectores" class="bg-white divide-y divide-gray-200">
+              <tr>
+                <td colspan="6" class="px-4 py-4 text-center text-gray-500">Cargando...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+
+      async function obtenerCsrf() {
+        const res = await fetch("/auth/csrf");
+        const data = await res.json();
+        return data.csrf_token || "";
+      }
+
+      // ============================================================
+      //  Mapa Leaflet
+      // ============================================================
+      const map = L.map("mapaVul").setView([-38.9, -72.3], 10);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap",
+      }).addTo(map);
+      L.control.scale({ imperial: false }).addTo(map);
+
+      const capaZonas = L.layerGroup().addTo(map);
+      const capaSectores = L.layerGroup().addTo(map);
+
+      const COLORES_SEV = { bajo: "#10b981", medio: "#f59e0b", alto: "#f97316", critico: "#dc2626" };
+
+      let idsExpuestos = new Set();
+
+      // ============================================================
+      //  Carga de sectores censales (mapa)
+      // ============================================================
+      async function cargarSectores() {
+        const comuna = $("filtroComuna").value;
+        const qs = comuna ? `?comuna=${encodeURIComponent(comuna)}` : "";
+        try {
+          const r = await fetch(`/api/modulo4/sectores-censales${qs}`);
+          if (!r.ok) throw new Error("Error de red");
+          const data = await r.json();
+          pintarSectores(data.features || []);
+        } catch (e) {
+          console.error("Error cargando sectores:", e);
+        }
+      }
+
+      // ============================================================
+      //  Pintado
+      // ============================================================
+      function pintarKPIs(r) {
+        $("kpiTotal").textContent = r.poblacion_total.toLocaleString("es-CL");
+        $("kpiExpuesta").textContent = r.poblacion_expuesta.toLocaleString("es-CL");
+        $("kpiPct").textContent = `${r.porcentaje_poblacion_expuesta}% del territorio`;
+        $("kpiViviendas").textContent = r.viviendas_expuestas.toLocaleString("es-CL");
+        $("kpiEscuelas").textContent = r.escuelas_expuestas;
+        $("kpiPostas").textContent = r.postas_expuestas;
+      }
+
+      function pintarMapaZonas(zonas) {
+        capaZonas.clearLayers();
+        zonas.forEach((z) => {
+          if (!z.geojson) return;
+          const color = COLORES_SEV[z.severidad] || "#6b7280";
+          L.geoJSON({ type: "Feature", geometry: z.geojson, properties: z }, {
+            style: { color, weight: 2, fillColor: color, fillOpacity: 0.25 },
+            onEachFeature: (ft, layer) => {
+              layer.bindPopup(`
+                <div style="min-width:200px">
+                  <b style="color:${color};font-size:14px">${z.nombre}</b><br>
+                  <span class="badge-sev badge-${z.severidad}" style="display:inline-block;margin-top:4px">${z.severidad.toUpperCase()}</span>
+                  <div style="margin-top:6px;font-size:12px;color:#374151">
+                    Población expuesta: <b>${z.poblacion_expuesta}</b><br>
+                    Viviendas: ${z.viviendas_expuestas} · Escuelas: ${z.escuelas_expuestas} · Postas: ${z.postas_expuestas}
+                  </div>
+                </div>
+              `);
+            },
+          }).addTo(capaZonas);
+        });
+      }
+
+      function pintarSectores(features) {
+        capaSectores.clearLayers();
+        features.forEach((f) => {
+          if (!f.geometry) return;
+          const expuesto = idsExpuestos.has(f.properties.id);
+          const color = expuesto ? "#dc2626" : "#2563eb";
+          const marker = L.circleMarker([f.geometry.coordinates[1], f.geometry.coordinates[0]], {
+            radius: expuesto ? 8 : 6,
+            color: "#ffffff",
+            weight: 1,
+            fillColor: color,
+            fillOpacity: 0.9,
+          });
+          marker.bindPopup(`
+            <div style="min-width:180px">
+              <b>${f.properties.sector}</b><br>
+              <span style="font-size:11px;color:#6b7280">${f.properties.comuna}</span>
+              <div style="margin-top:6px;font-size:12px">
+                Población: <b>${f.properties.poblacion}</b><br>
+                Viviendas: ${f.properties.viviendas} · Escuelas: ${f.properties.escuelas} · Postas: ${f.properties.postas}
+                <div style="margin-top:4px;font-weight:600;color:${expuesto ? "#dc2626" : "#2563eb"}">
+                  ${expuesto ? "⚠ Dentro de zona de riesgo" : "Fuera de zona de riesgo"}
+                </div>
+              </div>
+            </div>
+          `);
+          marker.addTo(capaSectores);
+        });
+      }
+
+      function pintarTablaZonas(zonas) {
+        const tbody = $("tablaZonas");
+        const conExposicion = zonas.filter((z) => z.poblacion_expuesta > 0 || z.escuelas_expuestas > 0 || z.viviendas_expuestas > 0);
+        const lista = conExposicion.length ? conExposicion : zonas;
+        if (!lista.length) {
+          tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-4 text-center text-gray-500">No hay zonas de riesgo activas.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = lista.map((z) => `
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-3 text-sm font-medium text-gray-900">${z.nombre}</td>
+            <td class="px-4 py-3 text-sm text-gray-700">${z.comuna}</td>
+            <td class="px-4 py-3"><span class="badge-sev badge-${z.severidad}">${z.severidad}</span></td>
+            <td class="px-4 py-3 text-sm text-right font-semibold text-red-700">${z.poblacion_expuesta}</td>
+            <td class="px-4 py-3 text-sm text-right text-gray-700">${z.viviendas_expuestas}</td>
+            <td class="px-4 py-3 text-sm text-right text-gray-700">${z.escuelas_expuestas}</td>
+            <td class="px-4 py-3 text-sm text-right text-gray-700">${z.postas_expuestas}</td>
+            <td class="px-4 py-3 text-sm text-right text-gray-700">${z.sectores.length}</td>
+          </tr>
+        `).join("");
+      }
+
+      // ============================================================
+      //  Tabla de sectores expuestos (usa el último análisis)
+      // ============================================================
+      let ultimoAnalisis = null;
+
+      function pintarTablaSectores() {
+        const tbody = $("tablaSectores");
+        const sectores = (ultimoAnalisis && ultimoAnalisis.sectores_expuestos) || [];
+        if (!sectores.length) {
+          tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-4 text-center text-gray-500">Ningún sector cae dentro de una zona de riesgo activa.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = sectores.map((s) => `
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-3 text-sm font-medium text-gray-900">${s.sector}</td>
+            <td class="px-4 py-3 text-sm text-gray-700">${s.comuna}</td>
+            <td class="px-4 py-3 text-sm text-right font-semibold text-red-700">${s.poblacion}</td>
+            <td class="px-4 py-3 text-sm text-right text-gray-700">${s.viviendas}</td>
+            <td class="px-4 py-3 text-sm text-right text-gray-700">${s.escuelas}</td>
+            <td class="px-4 py-3 text-sm text-right text-gray-700">${s.postas}</td>
+          </tr>
+        `).join("");
+      }
+
+      // ============================================================
+      //  Refresco general
+      // ============================================================
+      async function refrescar() {
+        const comuna = $("filtroComuna").value;
+        const qs = comuna ? `?comuna=${encodeURIComponent(comuna)}` : "";
+        $("estadoAnalisis").textContent = "Calculando exposición...";
+        try {
+          const r = await fetch(`/api/modulo4/vulnerabilidad${qs}`);
+          if (!r.ok) throw new Error("Error de red");
+          const data = await r.json();
+          ultimoAnalisis = data;
+          pintarKPIs(data.resumen);
+          idsExpuestos = new Set((data.sectores_expuestos || []).map((s) => s.id));
+          pintarMapaZonas(data.zonas || []);
+          pintarTablaZonas(data.zonas || []);
+          pintarTablaSectores();
+          $("statSectores").textContent = data.resumen.sectores_evaluados;
+          $("statZonas").textContent = data.resumen.zonas_activas;
+          $("estadoAnalisis").textContent = "✔ Análisis actualizado.";
+        } catch (e) {
+          console.error(e);
+          $("estadoAnalisis").textContent = "✖ Error calculando el análisis.";
+        }
+        await cargarSectores(); // repinta puntos con idsExpuestos ya cargados
+      }
+
+      // ============================================================
+      //  Eventos
+      // ============================================================
+      $("filtroComuna").addEventListener("change", refrescar);
+
+      $("btnLogout").addEventListener("click", async () => {
+        if (!confirm("¿Cerrar sesión?")) return;
+        try {
+          const csrf = await obtenerCsrf();
+          const r = await fetch("/auth/logout", {
+            method: "POST",
+            headers: { "X-CSRF-Token": csrf },
+          });
+          const data = await r.json().catch(() => ({}));
+          window.location.href = data.redirect || "/modulo1/landing";
+        } catch {
+          window.location.href = "/modulo1/landing";
+        }
+      });
+
+      document.addEventListener("DOMContentLoaded", refrescar);
+    </script>
+  </body>
+</html>

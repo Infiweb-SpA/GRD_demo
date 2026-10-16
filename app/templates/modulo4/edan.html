@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content="{{ csrf_token or '' }}" />
+    <title>Ficha EDAN - GRD Comunal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+      .leaflet-container { height: 100%; width: 100%; }
+      #mapaEdan { height: 420px; width: 100%; border-radius: 0.5rem; }
+      .seccion-titulo { font-size: 11px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .05em; color: #4f46e5; margin: 14px 0 6px; }
+      .badge-estado { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+      .estado-borrador { background: #e2e8f0; color: #334155; }
+      .estado-enviada  { background: #dcfce7; color: #166534; }
+      .badge-danio-Sin { background: #d1fae5; color: #065f46; }
+      .badge-danio-Daño-leve  { background: #fef3c7; color: #92400e; }
+      .badge-danio-Daño-medio { background: #ffedd5; color: #9a3412; }
+      .badge-danio-Daño-total { background: #fee2e2; color: #991b1b; }
+    </style>
+  </head>
+  <body class="bg-gray-50 text-gray-800 font-sans antialiased">
+
+    <header class="bg-amber-700 text-white shadow-lg">
+      <div class="container mx-auto px-4 py-6 flex justify-between items-center flex-wrap gap-3">
+        <div>
+          <h1 class="text-3xl font-bold">Ficha EDAN</h1>
+          <p class="text-amber-200">Módulo 4 — Evaluación de Daños y Necesidades (SENAPRED)</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="text-right">
+            <p class="text-sm text-amber-200">Sesión activa:</p>
+            <p class="font-semibold">{{ user.username }} ({{ user.rol.nombre }})</p>
+          </div>
+          <a href="/dashboard"
+             class="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+            ← Panel
+          </a>
+          <a href="/modulo4/vulnerabilidad"
+             class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+            📊 Análisis
+          </a>
+          <button id="btnLogout"
+                  class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-8">
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+
+        <!-- ======== Columna izquierda: georreferenciación ======== -->
+        <div class="lg:col-span-2 bg-white rounded-lg shadow-md p-6">
+          <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+            <h2 class="text-xl font-bold">Georreferenciación del Daño</h2>
+            <span id="estadoGeo" class="text-xs text-slate-500">Sin geometría</span>
+          </div>
+
+          <div class="mb-3">
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Vincular a un incidente del Módulo 2 (dibujado previamente)
+            </label>
+            <select id="incidenteSel" class="w-full rounded-md border border-gray-300 p-2 text-sm">
+              <option value="">— Sin incidente (dibujar punto) —</option>
+            </select>
+            <p class="text-xs text-slate-400 mt-1">
+              Al elegir un incidente se copia su geometría a la ficha (snapshot) y queda el vínculo de trazabilidad.
+            </p>
+          </div>
+
+          <div class="flex gap-2 mb-3">
+            <button id="btnMarcarPunto"
+                    class="bg-slate-600 hover:bg-slate-700 text-white px-3 py-2 rounded-md text-sm font-semibold">
+              📍 Marcar punto en el mapa
+            </button>
+            <button id="btnQuitarGeo"
+                    class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-2 rounded-md text-sm font-semibold">
+              ✕ Quitar geometría
+            </button>
+          </div>
+
+          <div id="mapaEdan" class="w-full rounded-lg border border-gray-300"></div>
+          <pre id="geoJsonVista" class="text-xs bg-slate-50 border border-slate-200 rounded p-2 overflow-x-auto max-h-32 mt-2">Sin geometría asignada.</pre>
+        </div>
+
+        <!-- ======== Columna derecha: formulario ======== -->
+        <div class="bg-white rounded-lg shadow-md p-6 h-fit">
+          <div class="flex justify-between items-center mb-2">
+            <h2 class="text-xl font-bold border-b pb-2 w-full">
+              <span id="formTitulo">Nueva Ficha EDAN</span>
+            </h2>
+          </div>
+
+          <div class="seccion-titulo">1 · Identificación</div>
+          <label class="block text-xs text-slate-500 mb-1">Comuna *</label>
+          <select id="fComuna" class="w-full rounded-md border border-gray-300 p-2 text-sm mb-2">
+            <option value="">— Seleccionar —</option>
+            {% for c in comunas %}
+            <option value="{{ c }}">{{ c }}</option>
+            {% endfor %}
+          </select>
+          <label class="block text-xs text-slate-500 mb-1">Sector / localidad</label>
+          <input id="fSector" type="text" class="w-full rounded-md border border-gray-300 p-2 text-sm mb-2" />
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Estado</label>
+              <select id="fEstado" class="w-full rounded-md border border-gray-300 p-2 text-sm">
+                <option value="borrador">Borrador</option>
+                <option value="enviada">Enviada</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Daño vivienda</label>
+              <select id="fDanio" class="w-full rounded-md border border-gray-300 p-2 text-sm">
+                {% for d in danio_tipos %}
+                <option value="{{ d }}">{{ d }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="seccion-titulo">2 · Daño en vivienda</div>
+          <div class="grid grid-cols-3 gap-2">
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Evaluadas</label>
+              <input id="fVivEval" type="number" min="0" value="0" class="w-full rounded-md border border-gray-300 p-2 text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Dañadas</label>
+              <input id="fVivDan" type="number" min="0" value="0" class="w-full rounded-md border border-gray-300 p-2 text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Destruidas</label>
+              <input id="fVivDest" type="number" min="0" value="0" class="w-full rounded-md border border-gray-300 p-2 text-sm" />
+            </div>
+          </div>
+
+          <div class="seccion-titulo">3 · Damnificados</div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Afectadas</label>
+              <input id="fPerAfect" type="number" min="0" value="0" class="w-full rounded-md border border-gray-300 p-2 text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Damnificadas</label>
+              <input id="fPerDamn" type="number" min="0" value="0" class="w-full rounded-md border border-gray-300 p-2 text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Desaparecidas</label>
+              <input id="fPerDesap" type="number" min="0" value="0" class="w-full rounded-md border border-gray-300 p-2 text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Fallecidas</label>
+              <input id="fPerFall" type="number" min="0" value="0" class="w-full rounded-md border border-gray-300 p-2 text-sm" />
+            </div>
+          </div>
+
+          <div class="seccion-titulo">4 · Necesidades de habitabilidad</div>
+          <div class="grid grid-cols-2 gap-1 text-sm">
+            <label class="flex items-center gap-2"><input id="nAgua" type="checkbox" class="rounded" /> Agua potable</label>
+            <label class="flex items-center gap-2"><input id="nAlim" type="checkbox" class="rounded" /> Alimentación</label>
+            <label class="flex items-center gap-2"><input id="nHabit" type="checkbox" class="rounded" /> Habitación</label>
+            <label class="flex items-center gap-2"><input id="nMed" type="checkbox" class="rounded" /> Asist. médica</label>
+            <label class="flex items-center gap-2"><input id="nSanit" type="checkbox" class="rounded" /> Serv. sanitario</label>
+          </div>
+          <label class="block text-xs text-slate-500 mt-2 mb-1">Otras necesidades</label>
+          <textarea id="fOtras" rows="2" class="w-full rounded-md border border-gray-300 p-2 text-sm"></textarea>
+
+          <div class="flex gap-2 mt-4">
+            <button id="btnGuardar" class="flex-1 bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-md text-sm font-semibold">
+              💾 Guardar ficha
+            </button>
+            <button id="btnCancelar" class="hidden bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-2 rounded-md text-sm font-semibold">
+              Cancelar
+            </button>
+          </div>
+          <p id="estadoForm" class="text-xs text-center mt-2 min-h-[1rem]"></p>
+        </div>
+      </div>
+
+      <!-- ======== Tabla de fichas ======== -->
+      <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+          <h2 class="text-xl font-bold">Fichas EDAN Registradas</h2>
+          <button id="btnExportar"
+                  class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-semibold">
+            ⬇ Exportar consolidado (SENAPRED)
+          </button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Comuna</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sector</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Daño</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Viv. destr.</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Damnif.</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Geo</th>
+                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tablaFichas" class="bg-white divide-y divide-gray-200">
+              <tr><td colspan="9" class="px-4 py-4 text-center text-gray-500">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+    <!-- ======== Modal de detalle ======== -->
+    <div id="modalDetalle" class="hidden fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[2000]">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-start mb-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800" id="det-titulo">—</h2>
+            <p class="text-xs text-slate-500" id="det-meta">—</p>
+          </div>
+          <button id="btnCerrarDetalle" class="text-slate-500 hover:text-slate-800 text-2xl leading-none">×</button>
+        </div>
+        <div id="det-cuerpo" class="space-y-3 text-sm"></div>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+
+      async function obtenerCsrf() {
+        const res = await fetch("/auth/csrf");
+        const data = await res.json();
+        return data.csrf_token || "";
+      }
+
+      // ============================================================
+      //  Estado
+      // ============================================================
+      let editId = null;              // null = creando; nº = editando
+      let geomActual = null;          // GeoJSON (snapshot) o null
+      let incidenteIdActual = null;   // vínculo FK a M2 o null
+      let modoPunto = false;          // esperando clic en el mapa
+      let incidentesCache = [];
+      let fichasCache = [];
+
+      // ============================================================
+      //  Mapa
+      // ============================================================
+      const map = L.map("mapaEdan").setView([-38.9, -72.3], 10);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap",
+      }).addTo(map);
+      const capaGeo = L.layerGroup().addTo(map);
+
+      map.on("click", (e) => {
+        if (!modoPunto) return;
+        geomActual = { type: "Point", coordinates: [e.latlng.lng, e.latlng.lat] };
+        incidenteIdActual = null;
+        $("incidenteSel").value = "";
+        modoPunto = false;
+        pintarGeometria();
+      });
+
+      function pintarGeometria() {
+        capaGeo.clearLayers();
+        if (!geomActual) {
+          $("geoJsonVista").textContent = "Sin geometría asignada.";
+          $("estadoGeo").textContent = "Sin geometría";
+          return;
+        }
+        $("geoJsonVista").textContent = JSON.stringify(geomActual, null, 2);
+        $("estadoGeo").textContent =
+          (incidenteIdActual ? `Vinculada al incidente #${incidenteIdActual}` : "Geometría propia") +
+          ` · ${geomActual.type}`;
+
+        const layer = L.geoJSON(geomActual, {
+          style: { color: "#d97706", weight: 2, fillColor: "#f59e0b", fillOpacity: 0.35 },
+          pointToLayer: (ft, latlng) => L.circleMarker(latlng, {
+            radius: 8, color: "#fff", weight: 1, fillColor: "#d97706", fillOpacity: 0.95,
+          }),
+        }).addTo(capaGeo);
+        try { map.fitBounds(layer.getBounds(), { padding: [30, 30], maxZoom: 14 }); } catch (_) {}
+      }
+
+      // ============================================================
+      //  Incidentes disponibles (M2) para el vínculo D2
+      // ============================================================
+      async function cargarIncidentes() {
+        try {
+          const r = await fetch("/api/modulo4/incidentes-disponibles");
+          if (!r.ok) return;
+          const data = await r.json();
+          incidentesCache = data.incidentes || [];
+          const sel = $("incidenteSel");
+          sel.innerHTML = '<option value="">— Sin incidente (dibujar punto) —</option>' +
+            incidentesCache.map((i) =>
+              `<option value="${i.id}">#${i.id} · ${i.amenaza_tipo} · ${i.comentario ? i.comentario.slice(0, 30) : ""}</option>`
+            ).join("");
+        } catch (e) { console.error("Error cargando incidentes:", e); }
+      }
+
+      $("incidenteSel").addEventListener("change", () => {
+        const id = parseInt($("incidenteSel").value, 10);
+        if (!id) { return; }
+        const inc = incidentesCache.find((i) => i.id === id);
+        if (inc && inc.geojson_geometria) {
+          geomActual = inc.geojson_geometria;
+          incidenteIdActual = id;
+          pintarGeometria();
+        } else {
+          $("estadoGeo").textContent = "⚠ El incidente no tiene geometría.";
+        }
+      });
+
+      $("btnMarcarPunto").addEventListener("click", () => {
+        modoPunto = !modoPunto;
+        $("estadoGeo").textContent = modoPunto ? "Clic en el mapa para colocar el punto…" : $("estadoGeo").textContent;
+        $("btnMarcarPunto").classList.toggle("bg-amber-600", modoPunto);
+        $("btnMarcarPunto").classList.toggle("bg-slate-600", !modoPunto);
+      });
+
+      $("btnQuitarGeo").addEventListener("click", () => {
+        geomActual = null;
+        incidenteIdActual = null;
+        $("incidenteSel").value = "";
+        pintarGeometria();
+      });
+
+      // ============================================================
+      //  Formulario: payload, guardar, editar, cancelar
+      // ============================================================
+      function construirPayload() {
+        return {
+          comuna: $("fComuna").value,
+          sector: $("fSector").value || null,
+          estado: $("fEstado").value,
+          danio_vivienda_tipo: $("fDanio").value,
+          geojson_geometria: geomActual,
+          incidente_id: incidenteIdActual,
+          viviendas_evaluadas: parseInt($("fVivEval").value || "0", 10),
+          viviendas_danadas: parseInt($("fVivDan").value || "0", 10),
+          viviendas_destruidas: parseInt($("fVivDest").value || "0", 10),
+          personas_afectadas: parseInt($("fPerAfect").value || "0", 10),
+          personas_damnificadas: parseInt($("fPerDamn").value || "0", 10),
+          personas_desaparecidas: parseInt($("fPerDesap").value || "0", 10),
+          personas_fallecidas: parseInt($("fPerFall").value || "0", 10),
+          nec_agua_potable: $("nAgua").checked,
+          nec_alimentacion: $("nAlim").checked,
+          nec_habitacion: $("nHabit").checked,
+          nec_asistencia_medica: $("nMed").checked,
+          nec_servicio_sanitario: $("nSanit").checked,
+          otras_necesidades: $("fOtras").value || null,
+        };
+      }
+
+      async function guardar() {
+        const payload = construirPayload();
+        const estado = $("estadoForm");
+        estado.classList.remove("text-red-600", "text-emerald-600");
+
+        if (!payload.comuna) {
+          estado.textContent = "✖ Selecciona la comuna.";
+          estado.classList.add("text-red-600");
+          return;
+        }
+        if (!payload.geojson_geometria) {
+          estado.textContent = "⚠ Guardando sin geometría (opcional).";
+        }
+
+        try {
+          const csrf = await obtenerCsrf();
+          const esEdicion = editId !== null;
+          const url = esEdicion ? `/api/modulo4/edan/${editId}` : "/api/modulo4/edan";
+          const metodo = esEdicion ? "PUT" : "POST";
+          const r = await fetch(url, {
+            method: metodo,
+            headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+            body: JSON.stringify(payload),
+          });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) {
+            throw new Error(data.detail || "Error guardando");
+          }
+          estado.textContent = esEdicion ? "✔ Ficha actualizada." : `✔ Ficha #${data.edan_id} creada.`;
+          estado.classList.add("text-emerald-600");
+          limpiarFormulario();
+          await cargarFichas();
+        } catch (err) {
+          estado.textContent = "✖ " + err.message;
+          estado.classList.add("text-red-600");
+        }
+      }
+
+      function limpiarFormulario() {
+        editId = null;
+        $("formTitulo").textContent = "Nueva Ficha EDAN";
+        $("btnGuardar").textContent = "💾 Guardar ficha";
+        $("btnCancelar").classList.add("hidden");
+        $("fComuna").value = "";
+        $("fSector").value = "";
+        $("fEstado").value = "borrador";
+        $("fDanio").value = "Sin daño";
+        ["fVivEval","fVivDan","fVivDest","fPerAfect","fPerDamn","fPerDesap","fPerFall"]
+          .forEach((id) => ($(id).value = 0));
+        ["nAgua","nAlim","nHabit","nMed","nSanit"].forEach((id) => ($(id).checked = false));
+        $("fOtras").value = "";
+        geomActual = null;
+        incidenteIdActual = null;
+        $("incidenteSel").value = "";
+        pintarGeometria();
+      }
+
+      function cargarParaEditar(id) {
+        const f = fichasCache.find((x) => x.id === id);
+        if (!f) return;
+        editId = f.id;
+        $("formTitulo").textContent = `Editando ficha #${f.id}`;
+        $("btnGuardar").textContent = "Actualizar ficha";
+        $("btnCancelar").classList.remove("hidden");
+        $("fComuna").value = f.comuna;
+        $("fSector").value = f.sector || "";
+        $("fEstado").value = f.estado;
+        $("fDanio").value = f.danio_vivienda_tipo;
+        $("fVivEval").value = f.viviendas_evaluadas;
+        $("fVivDan").value = f.viviendas_danadas;
+        $("fVivDest").value = f.viviendas_destruidas;
+        $("fPerAfect").value = f.personas_afectadas;
+        $("fPerDamn").value = f.personas_damnificadas;
+        $("fPerDesap").value = f.personas_desaparecidas;
+        $("fPerFall").value = f.personas_fallecidas;
+        $("nAgua").checked = f.nec_agua_potable;
+        $("nAlim").checked = f.nec_alimentacion;
+        $("nHabit").checked = f.nec_habitacion;
+        $("nMed").checked = f.nec_asistencia_medica;
+        $("nSanit").checked = f.nec_servicio_sanitario;
+        $("fOtras").value = f.otras_necesidades || "";
+        geomActual = f.geojson_geometria;
+        incidenteIdActual = f.incidente_id;
+        $("incidenteSel").value = f.incidente_id ? String(f.incidente_id) : "";
+        pintarGeometria();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      // ============================================================
+      //  Tabla de fichas
+      // ============================================================
+      async function cargarFichas() {
+        try {
+          const r = await fetch("/api/modulo4/edan");
+          if (!r.ok) throw new Error("Error de red");
+          const data = await r.json();
+          fichasCache = data.fichas || [];
+          pintarTabla();
+        } catch (e) {
+          console.error(e);
+          $("tablaFichas").innerHTML =
+            '<tr><td colspan="9" class="px-4 py-4 text-center text-red-500">Error cargando fichas.</td></tr>';
+        }
+      }
+
+      function claseDanio(d) {
+        if (d === "Sin daño") return "badge-danio-Sin";
+        return "badge-danio-" + d.replace(/\s/g, "-");
+      }
+
+      function pintarTabla() {
+        const tbody = $("tablaFichas");
+        if (!fichasCache.length) {
+          tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-4 text-center text-gray-500">No hay fichas EDAN registradas.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = fichasCache.map((f) => {
+          const damnif = f.personas_damnificadas;
+          const geo = f.geojson_geometria
+            ? `<span class="text-emerald-700 text-xs">● ${f.geojson_geometria.type}${f.incidente_id ? ` (#${f.incidente_id})` : ""}</span>`
+            : '<span class="text-slate-400 text-xs">○ sin geo</span>';
+          return `
+            <tr class="hover:bg-gray-50">
+              <td class="px-4 py-3 text-sm text-gray-500">#${f.id}</td>
+              <td class="px-4 py-3 text-sm text-gray-700">${f.comuna}</td>
+              <td class="px-4 py-3 text-sm text-gray-700">${f.sector || "—"}</td>
+              <td class="px-4 py-3"><span class="badge-danio badge-${claseDanio(f.danio_vivienda_tipo)} badge-estado" style="background:transparent">${f.danio_vivienda_tipo}</span></td>
+              <td class="px-4 py-3 text-sm text-right text-gray-700">${f.viviendas_destruidas}</td>
+              <td class="px-4 py-3 text-sm text-right text-gray-700">${damnif}</td>
+              <td class="px-4 py-3"><span class="badge-estado estado-${f.estado}">${f.estado}</span></td>
+              <td class="px-4 py-3">${geo}</td>
+              <td class="px-4 py-3 text-right space-x-2 whitespace-nowrap">
+                <button data-det="${f.id}" class="text-indigo-700 hover:text-indigo-900 text-sm font-medium">Detalle</button>
+                <button data-edit="${f.id}" class="text-amber-700 hover:text-amber-900 text-sm font-medium">Editar</button>
+                <button data-del="${f.id}" class="text-red-600 hover:text-red-800 text-sm font-medium">Eliminar</button>
+              </td>
+            </tr>
+          `;
+        }).join("");
+
+        tbody.querySelectorAll("[data-det]").forEach((b) =>
+          b.addEventListener("click", () => abrirDetalle(parseInt(b.dataset.det, 10))));
+        tbody.querySelectorAll("[data-edit]").forEach((b) =>
+          b.addEventListener("click", () => cargarParaEditar(parseInt(b.dataset.edit, 10))));
+        tbody.querySelectorAll("[data-del]").forEach((b) =>
+          b.addEventListener("click", () => eliminarFicha(parseInt(b.dataset.del, 10))));
+      }
+
+      // ============================================================
+      //  Detalle
+      // ============================================================
+      function abrirDetalle(id) {
+        const f = fichasCache.find((x) => x.id === id);
+        if (!f) return;
+        $("det-titulo").textContent = `Ficha EDAN #${f.id}`;
+        $("det-meta").textContent =
+          `${f.comuna}${f.sector ? " · " + f.sector : ""} · ${f.estado} · ${f.creado_en ? new Date(f.creado_en).toLocaleString("es-CL") : ""}`;
+
+        const necesidades = [
+          f.nec_agua_potable && "Agua potable",
+          f.nec_alimentacion && "Alimentación",
+          f.nec_habitacion && "Habitación",
+          f.nec_asistencia_medica && "Asistencia médica",
+          f.nec_servicio_sanitario && "Servicio sanitario",
+        ].filter(Boolean);
+
+        $("det-cuerpo").innerHTML = `
+          <div class="grid grid-cols-2 gap-3">
+            <div class="border rounded-lg p-3">
+              <p class="text-xs font-semibold uppercase text-slate-500 mb-1">1 · Daño en vivienda</p>
+              <p><b>${f.danio_vivienda_tipo}</b></p>
+              <p class="text-slate-600">Evaluadas: ${f.viviendas_evaluadas} · Dañadas: ${f.viviendas_danadas} · Destruidas: ${f.viviendas_destruidas}</p>
+            </div>
+            <div class="border rounded-lg p-3">
+              <p class="text-xs font-semibold uppercase text-slate-500 mb-1">2 · Damnificados</p>
+              <p class="text-slate-600">Afectadas: <b>${f.personas_afectadas}</b> · Damnificadas: <b>${f.personas_damnificadas}</b></p>
+              <p class="text-slate-600">Desaparecidas: ${f.personas_desaparecidas} · Fallecidas: ${f.personas_fallecidas}</p>
+            </div>
+          </div>
+          <div class="border rounded-lg p-3">
+            <p class="text-xs font-semibold uppercase text-slate-500 mb-1">3 · Necesidades de habitabilidad</p>
+            <p class="text-slate-600">${necesidades.length ? necesidades.join(" · ") : "Ninguna declarada"}</p>
+            ${f.otras_necesidades ? `<p class="text-slate-500 text-xs mt-1">Otras: ${f.otras_necesidades}</p>` : ""}
+          </div>
+          <div class="border rounded-lg p-3">
+            <p class="text-xs font-semibold uppercase text-slate-500 mb-1">Georreferenciación</p>
+            <p class="text-slate-600">${f.incidente_id ? `Vinculada al incidente #${f.incidente_id} (M2)` : "Geometría propia / sin vínculo"}</p>
+            <pre class="text-xs bg-slate-50 border border-slate-200 rounded p-2 overflow-x-auto max-h-32 mt-1">${f.geojson_geometria ? JSON.stringify(f.geojson_geometria, null, 2) : "Sin geometría"}</pre>
+          </div>
+        `;
+        $("modalDetalle").classList.remove("hidden");
+      }
+
+      $("btnCerrarDetalle").addEventListener("click", () => $("modalDetalle").classList.add("hidden"));
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") $("modalDetalle").classList.add("hidden");
+      });
+
+      // ============================================================
+      //  Eliminar
+      // ============================================================
+      async function eliminarFicha(id) {
+        if (!confirm(`¿Eliminar la ficha EDAN #${id}? (borrado lógico, queda en auditoría)`)) return;
+        try {
+          const csrf = await obtenerCsrf();
+          const r = await fetch(`/api/modulo4/edan/${id}`, {
+            method: "DELETE",
+            headers: { "X-CSRF-Token": csrf },
+          });
+          if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            alert("Error: " + (err.detail || "desconocido"));
+            return;
+          }
+          if (editId === id) limpiarFormulario();
+          await cargarFichas();
+        } catch { alert("Error de conexión."); }
+      }
+
+      // ============================================================
+      //  Eventos globales
+      // ============================================================
+      $("btnGuardar").addEventListener("click", guardar);
+      $("btnCancelar").addEventListener("click", limpiarFormulario);
+      $("btnExportar").addEventListener("click", () => {
+        window.location.href = "/api/modulo4/exportar-edan";
+      });
+      $("btnLogout").addEventListener("click", async () => {
+        if (!confirm("¿Cerrar sesión?")) return;
+        try {
+          const csrf = await obtenerCsrf();
+          const r = await fetch("/auth/logout", { method: "POST", headers: { "X-CSRF-Token": csrf } });
+          const data = await r.json().catch(() => ({}));
+          window.location.href = data.redirect || "/modulo1/landing";
+        } catch { window.location.href = "/modulo1/landing"; }
+      });
+
+      document.addEventListener("DOMContentLoaded", async () => {
+        await Promise.all([cargarIncidentes(), cargarFichas()]);
+      });
+    </script>
+  </body>
+</html>

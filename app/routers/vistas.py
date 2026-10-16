@@ -93,8 +93,8 @@ def vista_dashboard(
         _bloque("modulo_3", "Zonas de Riesgo",
                 "Inteligencia predictiva",
                 "/modulo3/zonas", "zonas:leer", "🔮"),
-        _bloque("modulo_4", "Vulnerabilidad",
-                "Análisis socioeconómico",
+        _bloque("modulo_4", "Vulnerabilidad y EDAN",
+                "Análisis de vulnerabilidad y evaluación de daños",
                 "/modulo4/vulnerabilidad", "vulnerabilidad:consultar", "📊"),
     ]
 

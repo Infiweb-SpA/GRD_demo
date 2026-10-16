@@ -9,7 +9,7 @@ from app.config import settings
 from app.database import SessionLocal, init_db
 from app.routers import auth
 from app.seed import seed_inicial
-from app.routers import auth, vistas,modulo1,modulo2,permisos,modulo3
+from app.routers import auth, vistas,modulo1,modulo2,permisos,modulo3,modulo4
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -49,6 +49,7 @@ app.include_router(modulo1.router)
 app.include_router(modulo2.router)
 app.include_router(permisos.router)
 app.include_router(modulo3.router)
+app.include_router(modulo4.router)
 
 @app.get("/api/salud", tags=["sistema"])
 def salud() -> dict:

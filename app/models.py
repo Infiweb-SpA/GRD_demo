@@ -172,3 +172,100 @@ class ZonaRiesgo(Base):
         nullable=True,
     )
     fecha_generacion = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+# =========================================================================
+# MÓDULO 4 — Análisis de Vulnerabilidad y Evaluación de Daños (EDAN)
+# =========================================================================
+
+
+class DatoCensal(Base):
+    """Datos demográficos e infraestructura crítica por sector (Módulo 4).
+
+    Decisión D1: se almacenan en una tabla LOCAL en lugar de consultar un
+    endpoint CKAN en runtime. Así el cruce es determinista, auditable y no
+    depende de la disponibilidad de una API externa (misma filosofía que el
+    motor del Módulo 3).
+
+    El par (lat, lon) representa el centroide del sector y se usa para el
+    cruce point-in-polygon con los polígonos de riesgo del Módulo 3.
+    """
+
+    __tablename__ = "datos_censales"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    comuna: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    sector: Mapped[str] = mapped_column(String(200), nullable=False)
+    lat: Mapped[float | None] = mapped_column(Float)
+    lon: Mapped[float | None] = mapped_column(Float)
+    poblacion: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    viviendas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    escuelas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    postas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    creado_en: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class FichaEDAN(Base):
+    """Ficha EDAN (Evaluación de Daños y Necesidades) — SENAPRED.
+
+    Concentra la evaluación post-terreno en un solo lugar antes de enviarla
+    a SENAPRED. Vincula la dañificación con la georreferencia del Módulo 2
+    de forma HÍBRIDA (decisión D2):
+
+      * ``incidente_id`` (FK nullable) → trazabilidad hacia el incidente de M2.
+      * ``geojson_geometria`` (snapshot) → copia de la geometría para que la
+        ficha sea autocontenida y exportable sin depender de M2.
+
+    Campos organizados según los tres bloques oficiales del EDAN:
+    tipo de daño en vivienda · número de damnificados · necesidades de
+    habitabilidad.
+    """
+
+    __tablename__ = "fichas_edan"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # --- Identificación ---
+    comuna: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    sector: Mapped[str | None] = mapped_column(String(200))
+    estado: Mapped[str] = mapped_column(
+        String(20), default="borrador", nullable=False
+    )  # borrador | enviada
+
+    # --- Georreferenciación (D2: híbrido FK + snapshot) ---
+    geojson_geometria: Mapped[str | None] = mapped_column(Text)  # Point/Polygon WGS84
+    incidente_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("incidentes_reportes.id", ondelete="SET NULL")
+    )
+
+    # --- 1) Tipo de daño en vivienda ---
+    danio_vivienda_tipo: Mapped[str] = mapped_column(
+        String(50), default="Sin daño", nullable=False
+    )  # Sin daño | Daño leve | Daño medio | Daño total
+    viviendas_evaluadas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    viviendas_danadas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    viviendas_destruidas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # --- 2) Número de damnificados ---
+    personas_afectadas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    personas_damnificadas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    personas_desaparecidas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    personas_fallecidas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # --- 3) Necesidades de habitabilidad ---
+    nec_agua_potable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    nec_alimentacion: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    nec_habitacion: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    nec_asistencia_medica: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    nec_servicio_sanitario: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    otras_necesidades: Mapped[str | None] = mapped_column(Text)
+
+    # --- Trazabilidad ---
+    creado_por_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id", ondelete="SET NULL")
+    )
+    activo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    creado_en: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    creado_por: Mapped["Usuario | None"] = relationship()
+    incidente: Mapped["Incidente | None"] = relationship()

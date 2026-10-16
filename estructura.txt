@@ -5,10 +5,12 @@ GRD_demo:
 |-------- modulo1.py
 |-------- modulo2.py
 |-------- modulo3.py
+|-------- modulo4.py
 |-------- permisos.py
 |-------- vistas.py
 |---- services:
 |-------- modulo3_engine.py
+|-------- modulo4_engine.py
 |---- static:
 |-------- uploads:
 |------------ incidentes:
@@ -24,6 +26,9 @@ GRD_demo:
 |------------ index.html
 |-------- modulo3:
 |------------ zonas.html
+|-------- modulo4:
+|------------ edan.html
+|------------ vulnerabilidad.html
 |-------- base.html
 |-------- dashboard.html
 |---- tests:
@@ -41,9 +46,11 @@ GRD_demo:
 |---- RESUMEN_MODULO1.md
 |---- RESUMEN_MODULO2.md
 |---- RESUMEN_MODULO3.md
+|---- RESUMEN_MODULO4.md
 |-- grd.db
 |-- limpiar_fluvial.py
 |-- seed_modulo3.py
+|-- seed_modulo4.py
 |-- test_m3.ps1
 |-- test_precipitacion.py
 |-- verificar_encoding.py
