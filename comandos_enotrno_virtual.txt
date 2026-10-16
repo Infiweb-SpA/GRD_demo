@@ -4,5 +4,11 @@ python -m venv .venv
 # activar el entorno virtual
 .venv\Scripts\Activate.ps1
 
+# desactivar entorno virtual
+deactivate
+
 # instalar requerimientos
 pip install -r requirements.txt
+
+# correr proyecto
+uvicorn app.main:app --reload   
